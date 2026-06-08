@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Artefatos gerados
+sample_data.xlsx
+*.log
+
+# Configs locais do editor/Claude
+.claude/
