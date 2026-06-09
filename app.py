@@ -518,9 +518,10 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
             c_gauge, c_hist = st.columns([1, 2])
             c_gauge.plotly_chart(
                 fig_gauge(top_a["Fatia da variância (%)"], top_ind),
-                use_container_width=True,
+                use_container_width=True, key="kpi_gauge",
             )
-            c_hist.plotly_chart(fig_key_timeline(df, key), use_container_width=True)
+            c_hist.plotly_chart(fig_key_timeline(df, key),
+                                use_container_width=True, key="key_timeline")
 
             # --- Gatilhos acionáveis (forte variação no período todo) ---- #
             st.subheader("🚨 Gatilhos acionáveis")
@@ -562,7 +563,8 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
 
             # --- Evidência: chave × driver #1 (unidades reais, eixo duplo) #
             st.subheader("🔍 Evidência do impacto (causa → efeito)")
-            st.plotly_chart(fig_dual_axis(df, key, top_ind), use_container_width=True)
+            st.plotly_chart(fig_dual_axis(df, key, top_ind),
+                            use_container_width=True, key="dual_evidence")
 
             event = analysis.detect_main_event(
                 df[res_top.indicator], res_top.best_lag_samples, info.step_minutes
@@ -575,7 +577,8 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
                     f"**{event.peak_time:%d/%m %H:%M}** (z = {event.peak_z:+.1f}); o efeito "
                     f"em **{key}** aparece ~**{event.lag_minutes:g} min** depois (região verde)."
                 )
-                st.plotly_chart(fig_impact(df, key, res_top, event), use_container_width=True)
+                st.plotly_chart(fig_impact(df, key, res_top, event),
+                                use_container_width=True, key="impact_chart")
 
             # --- Tabela de drivers (fatia rigorosa) --------------------- #
             st.subheader("📑 Drivers do indicador-chave")
@@ -630,7 +633,7 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
             file_name="ranking_correlacao.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        st.plotly_chart(fig_ranking(ranking), use_container_width=True)
+        st.plotly_chart(fig_ranking(ranking), use_container_width=True, key="ranking_bar")
 
         st.subheader("🔎 Detalhe por indicador")
         sel = st.selectbox(
@@ -639,9 +642,12 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
         res = results[sel]
 
         g1, g2 = st.columns(2)
-        g1.plotly_chart(fig_cross_corr(res, info.step_minutes), use_container_width=True)
-        g2.plotly_chart(fig_scatter(df, key, res), use_container_width=True)
-        st.plotly_chart(fig_overlay(df, key, res), use_container_width=True)
+        g1.plotly_chart(fig_cross_corr(res, info.step_minutes),
+                        use_container_width=True, key="cross_corr")
+        g2.plotly_chart(fig_scatter(df, key, res),
+                        use_container_width=True, key="scatter")
+        st.plotly_chart(fig_overlay(df, key, res),
+                        use_container_width=True, key="overlay")
 
         if res.n_points < 30:
             st.warning(
@@ -656,7 +662,7 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
             "indicador-chave. Útil para ver relações diretas/inversas e identificar "
             "indicadores redundantes entre si (valores próximos de ±1)."
         )
-        st.plotly_chart(fig_corr_matrix(df), use_container_width=True)
+        st.plotly_chart(fig_corr_matrix(df), use_container_width=True, key="corr_matrix")
 
         # --- Comparação livre de pares (eixo duplo) --------------------- #
         st.subheader("📈 Comparar variáveis (eixo duplo)")
@@ -680,4 +686,5 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
         if var_a == var_b:
             st.info("Selecione duas variáveis diferentes para a comparação.")
         else:
-            st.plotly_chart(fig_dual_axis(df, var_a, var_b), use_container_width=True)
+            st.plotly_chart(fig_dual_axis(df, var_a, var_b),
+                            use_container_width=True, key="dual_pair")
