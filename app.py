@@ -26,6 +26,22 @@ st.caption(
     "considerando o atraso (lag) entre causa e efeito."
 )
 
+# Permite que nomes longos de indicadores quebrem linha nos KPIs (st.metric)
+# em vez de serem cortados com reticências.
+st.markdown(
+    """
+    <style>
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.25;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # --------------------------------------------------------------------------- #
 # Helpers de gráfico
@@ -105,13 +121,15 @@ def fig_impact(
 ) -> go.Figure:
     """Causa→efeito na linha de tempo REAL (sem ajuste de lag), destacando a
     janela do maior distúrbio na causa e a janela de efeito na variável-chave."""
+    y_key = _zscore(df[key])
+    y_cause = _zscore(df[res.indicator])
     fig = go.Figure()
     fig.add_trace(
-        go.Scatter(x=df.index, y=_zscore(df[key]), name=f"{key} (chave)",
+        go.Scatter(x=df.index, y=y_key, name=f"{key} (chave)",
                    line=dict(color="#1f77b4"))
     )
     fig.add_trace(
-        go.Scatter(x=df.index, y=_zscore(df[res.indicator]),
+        go.Scatter(x=df.index, y=y_cause,
                    name=f"{res.indicator} (causa)", line=dict(color="#d62728"))
     )
 
@@ -127,11 +145,13 @@ def fig_impact(
         annotation_text="impacto na chave", annotation_position="top right",
     )
 
-    # Seta ligando o pico da causa ao centro da janela de efeito
+    # Seta (horizontal, no topo) ligando o pico da causa ao centro da janela de efeito.
+    # Usa coordenadas de eixo (x e y) — 'paper' não é válido para axref/ayref.
     effect_mid = event.effect_start + (event.effect_end - event.effect_start) / 2
+    ytop = float(np.nanmax([y_key.max(), y_cause.max()]))
     fig.add_annotation(
         x=effect_mid, ax=event.peak_time, xref="x", axref="x",
-        y=1.05, ay=1.05, yref="paper", ayref="paper",
+        y=ytop, ay=ytop, yref="y", ayref="y",
         showarrow=True, arrowhead=3, arrowwidth=2, arrowcolor="gray",
         text=f"lag = {event.lag_minutes:g} min", font=dict(color="gray"),
     )
@@ -167,8 +187,9 @@ def fig_scatter(df: pd.DataFrame, key: str, res: analysis.LagResult) -> go.Figur
 
 
 def fig_gauge(impact_pct: float, driver: str) -> go.Figure:
-    """Medidor (gauge) do percentual de impacto do driver principal."""
-    val = 0.0 if impact_pct is None or np.isnan(impact_pct) else impact_pct
+    """Medidor (gauge) do percentual de impacto do driver principal (0–100%)."""
+    val = 0.0 if impact_pct is None or np.isnan(impact_pct) else float(impact_pct)
+    val = max(0.0, min(100.0, val))  # garante a escala 0–100
     fig = go.Figure(
         go.Indicator(
             mode="gauge+number",
@@ -176,7 +197,12 @@ def fig_gauge(impact_pct: float, driver: str) -> go.Figure:
             number={"suffix": "%"},
             title={"text": f"Impacto de<br>{driver}"},
             gauge={
-                "axis": {"range": [0, 100]},
+                "axis": {
+                    "range": [0, 100],
+                    "tickmode": "linear",
+                    "dtick": 20,
+                    "ticksuffix": "%",
+                },
                 "bar": {"color": "#1f77b4"},
                 "steps": [
                     {"range": [0, 30], "color": "#f8d7da"},
@@ -190,6 +216,31 @@ def fig_gauge(impact_pct: float, driver: str) -> go.Figure:
     return fig
 
 
+def fig_dual_axis(df: pd.DataFrame, var_primary: str, var_secondary: str) -> go.Figure:
+    """Par de variáveis em UNIDADES REAIS (sem z-score), em eixo duplo.
+
+    ``var_primary`` no eixo principal (esquerda) e ``var_secondary`` no eixo
+    secundário (direita), na linha de tempo real (sem deslocamento por lag)."""
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df[var_primary], name=var_primary,
+                   line=dict(color="#1f77b4"))
+    )
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df[var_secondary], name=var_secondary,
+                   line=dict(color="#d62728"), yaxis="y2")
+    )
+    fig.update_layout(
+        title=f"{var_primary} (eixo esq.) × {var_secondary} (eixo dir.) — unidades reais",
+        xaxis_title="Tempo (posição real)",
+        yaxis=dict(title=var_primary, color="#1f77b4"),
+        yaxis2=dict(title=var_secondary, color="#d62728", overlaying="y", side="right"),
+        height=420,
+        legend=dict(orientation="h", yanchor="bottom", y=1.08, x=0),
+    )
+    return fig
+
+
 def fig_key_timeline(df: pd.DataFrame, key: str) -> go.Figure:
     """Mini série temporal do indicador-chave (contexto rápido no painel)."""
     fig = go.Figure(go.Scatter(x=df.index, y=df[key], mode="lines", name=key))
@@ -199,6 +250,32 @@ def fig_key_timeline(df: pd.DataFrame, key: str) -> go.Figure:
         margin=dict(t=40, b=10),
         xaxis_title=None,
         yaxis_title=key,
+    )
+    return fig
+
+
+def fig_corr_matrix(df: pd.DataFrame) -> go.Figure:
+    """Matriz de correlação (Pearson, lag 0) entre todos os indicadores + chave."""
+    corr = df.corr().round(2)
+    fig = go.Figure(
+        go.Heatmap(
+            z=corr.values,
+            x=corr.columns,
+            y=corr.columns,
+            zmin=-1, zmax=1,
+            colorscale="RdBu", reversescale=True,  # +1 vermelho, −1 azul
+            text=corr.values,
+            texttemplate="%{text:.2f}",
+            textfont=dict(size=11),
+            colorbar=dict(title="r"),
+        )
+    )
+    n = len(corr.columns)
+    fig.update_layout(
+        title="Matriz de correlação entre indicadores (sem defasagem / lag 0)",
+        height=max(380, 70 * n),
+        yaxis=dict(autorange="reversed"),
+        margin=dict(t=60, b=40),
     )
     return fig
 
@@ -236,35 +313,72 @@ with st.expander("👁️ Prévia dos dados importados", expanded=False):
     st.dataframe(raw.head(20), use_container_width=True)
 
 # --------------------------------------------------------------------------- #
-# 2. Reamostragem
+# 2. Pré-processamento — reamostragem normal OU amostras compostas (laboratório)
 # --------------------------------------------------------------------------- #
-col_a, col_b = st.columns([1, 1])
-with col_a:
-    override = st.checkbox("Definir passo manualmente", value=False)
-manual_step = None
-if override:
-    with col_b:
-        manual_step = st.number_input(
-            "Passo (minutos)", min_value=0.1, value=1.0, step=0.5
-        )
+lab_mode = st.toggle(
+    "Há indicadores de laboratório (amostras compostas)?",
+    value=False,
+    help="Variáveis medidas em laboratório por composição (ex.: a cada 4 h), cujo "
+         "valor é a MÉDIA do período e não pode ser interpolado. O instante "
+         "registrado é o fim do período.",
+)
 
-df, info = analysis.detect_and_resample(raw, step_minutes=manual_step)
+if lab_mode:
+    lc1, lc2 = st.columns([2, 1])
+    with lc1:
+        lab_inds = st.multiselect(
+            "Quais indicadores são variáveis de laboratório?",
+            options=list(raw.columns),
+        )
+    with lc2:
+        period_h = st.number_input(
+            "Período da análise composta (horas)",
+            min_value=0.5, value=4.0, step=0.5,
+            help="Nº de horas que cada amostra de laboratório compõe. A janela é "
+                 "(T − período, T], com T = data/hora registrada (fim do período).",
+        )
+    if not lab_inds:
+        st.info("Selecione ao menos um indicador de laboratório para continuar.")
+        st.stop()
+    try:
+        df, info = analysis.composite_average(raw, lab_inds, period_h)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Erro ao montar as amostras compostas: {exc}")
+        st.stop()
+    st.caption(
+        f"🧪 **Modo laboratório:** todos os indicadores foram agregados pela média "
+        f"em janelas de **{period_h:g} h**, ancoradas nas **{info.n_rows}** coletas de "
+        f"laboratório. As variáveis de laboratório mantêm o valor reportado (sem interpolação)."
+    )
+else:
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        override = st.checkbox("Definir passo manualmente", value=False)
+    manual_step = None
+    if override:
+        with col_b:
+            manual_step = st.number_input(
+                "Passo (minutos)", min_value=0.1, value=1.0, step=0.5
+            )
+    df, info = analysis.detect_and_resample(raw, step_minutes=manual_step)
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Passo detectado", f"{info.step_minutes:g} min")
+m1.metric("Passo" + (" (composto)" if lab_mode else " detectado"), f"{info.step_minutes:g} min")
 m2.metric("Amostras", info.n_rows)
 m3.metric("Lacunas interpoladas", info.n_gaps_filled)
 m4.metric("NaN restante", f"{info.nan_fraction*100:.1f}%")
 
 if info.irregular:
     st.warning(
+        "As coletas de laboratório têm espaçamento irregular — verifique o agendamento."
+        if lab_mode else
         "Os timestamps originais são irregulares — os dados foram reamostrados "
         "para uma grade fixa. Verifique se o passo detectado faz sentido."
     )
 if info.nan_fraction > 0.3:
     st.warning(
-        "Mais de 30% das células ficaram vazias após a reamostragem. "
-        "As correlações podem ficar instáveis; considere ajustar o passo."
+        "Mais de 30% das células estão vazias. "
+        "As correlações podem ficar instáveis; considere revisar os dados/parâmetros."
     )
 
 # --------------------------------------------------------------------------- #
@@ -285,6 +399,24 @@ with c2:
         help="Maior atraso causa→efeito a procurar, em minutos.",
     )
 
+cfg1, cfg2 = st.columns([1, 1])
+with cfg1:
+    remove_collinear = st.toggle(
+        "Eliminar indicadores com multicolinearidade",
+        value=True,
+        help="Ligado: remove indicadores redundantes entre si (|corr| alto / VIF alto), "
+             "mantendo um representante por grupo. Desligado: mantém todos na atribuição "
+             "(as fatias podem ficar menos estáveis; o VIF segue como alerta).",
+    )
+with cfg2:
+    var_strong_pct = st.slider(
+        "Variação forte — limiar de CV (%)",
+        min_value=5, max_value=100, value=15, step=5,
+        help="Um indicador é considerado de 'variação forte' (e gera gatilho) quando o "
+             "coeficiente de variação no período todo (σ/|μ|) atinge este limiar.",
+    )
+strong_cv = var_strong_pct / 100.0
+
 max_lag = max(1, int(round(max_lag_min / info.step_minutes)))
 
 if st.button("🔍 Analisar", type="primary"):
@@ -301,10 +433,13 @@ def _dir_arrow(d: int) -> str:
     return "subindo ↑" if d > 0 else ("caindo ↓" if d < 0 else "estável →")
 
 
-def _status_label(stt: analysis.CurrentStatus) -> str:
-    if not stt.disturbed:
-        return "🟢 Estável"
-    return "🔴 Distúrbio " + ("↑" if stt.direction > 0 else "↓")
+_STAB_EMOJI = {"Estável": "🟢", "Moderada": "🟡", "Instável": "🔴"}
+
+
+def _stab_label(stab: analysis.StabilityResult) -> str:
+    emoji = _STAB_EMOJI.get(stab.classification, "⚪")
+    cv = "" if np.isnan(stab.cv) else f" · CV {stab.cv * 100:.0f}%"
+    return f"{emoji} {stab.classification}{cv}"
 
 
 # --------------------------------------------------------------------------- #
@@ -319,109 +454,163 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
         st.stop()
 
     ranking = analysis.add_impact_columns(ranking_base)
-    top = ranking.iloc[0]
-    res_top = results[top["Indicador"]]
+    top = ranking.iloc[0]  # topo por correlação simples (usado na aba Detalhada)
+    # Atribuição rigorosa: fatia real (não-sobreposta) da variância por driver.
+    # A eliminação de multicolinearidade é controlada pelo toggle da configuração.
+    attribution = analysis.robust_attribution(
+        df, key, results, remove_collinear=remove_collinear
+    )
+    atable = attribution.table
 
-    # Status atual de cada driver (para KPIs, gatilhos e tabela)
-    statuses = {ind: analysis.recent_status(df[ind], window=STATUS_WINDOW)
-                for ind in ranking["Indicador"]}
+    # Estabilidade de cada driver no PERÍODO TODO (para tabela e gatilhos)
+    stabilities = {ind: analysis.overall_stability(df[ind], strong_cv=strong_cv)
+                   for ind in ranking["Indicador"]}
 
     tab_dash, tab_detail = st.tabs(["🚦 Painel de Decisão", "🔬 Análise Detalhada"])
 
     # ===================================================================== #
-    # ABA PRINCIPAL — Painel de Decisão
+    # ABA PRINCIPAL — Painel de Decisão (atribuição rigorosa de variância)
     # ===================================================================== #
     with tab_dash:
-        key_s = df[key].dropna()
-        cur_val = float(key_s.iloc[-1]) if len(key_s) else float("nan")
-        ref_idx = -(STATUS_WINDOW + 1)
-        prev_val = float(key_s.iloc[ref_idx]) if len(key_s) > STATUS_WINDOW else cur_val
-        delta = cur_val - prev_val
-
-        st.subheader("🎯 Diagnóstico")
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric(f"{key} (atual)", f"{cur_val:.2f}", delta=f"{delta:+.2f}")
-        k2.metric("Principal causa", top["Indicador"], help="Maior correlação no lag ótimo")
-        k3.metric(
-            "Impacto (variância explicada)",
-            f"{top['Impacto (%)']:.0f}%",
-            help="R² = corr² — fração da variação do indicador-chave explicada por este driver.",
-        )
-        k4.metric(
-            "Antecedência (lag)",
-            f"{top['Lag ótimo (min)']:g} min",
-            delta=top["Sentido"],
-            delta_color="off",
-            help="Tempo entre o distúrbio na causa e o efeito no indicador-chave.",
-        )
-
-        c_gauge, c_hist = st.columns([1, 2])
-        c_gauge.plotly_chart(
-            fig_gauge(top["Impacto (%)"], top["Indicador"]), use_container_width=True
-        )
-        c_hist.plotly_chart(fig_key_timeline(df, key), use_container_width=True)
-
-        # --- Gatilhos acionáveis ---------------------------------------- #
-        st.subheader("🚨 Gatilhos acionáveis")
-        triggers = []
-        for _, row in ranking.iterrows():
-            ind = row["Indicador"]
-            stt = statuses[ind]
-            corr = row["Correlação (lag ótimo)"]
-            lagmin = row["Lag ótimo (min)"]
-            # gatilho preditivo só faz sentido para drivers que ANTECEDEM (lag > 0)
-            if stt.disturbed and lagmin > 0 and not np.isnan(corr):
-                key_dir = stt.direction * (1 if corr >= 0 else -1)
-                triggers.append((ind, stt, key_dir, lagmin, row["Impacto (%)"]))
-
-        if not triggers:
-            st.success(
-                "Nenhum driver em distúrbio no momento — o processo está estável. "
-                "Sem ações recomendadas."
+        if atable.empty:
+            st.warning(
+                "Dados insuficientes para a atribuição rigorosa de variância "
+                "(poucos pontos após alinhar os lags). Veja a aba Análise Detalhada."
             )
         else:
-            st.caption(
-                "Drivers que antecedem o indicador-chave e estão com nível atípico "
-                "agora — janela de antecedência para agir antes do efeito se concretizar."
+            top_a = atable.iloc[0]
+            top_ind = top_a["Indicador"]
+            res_top = results[top_ind]
+
+            key_s = df[key].dropna()
+            cur_val = float(key_s.iloc[-1]) if len(key_s) else float("nan")
+            ref_idx = -(STATUS_WINDOW + 1)
+            prev_val = float(key_s.iloc[ref_idx]) if len(key_s) > STATUS_WINDOW else cur_val
+            delta = cur_val - prev_val
+
+            key_stab = analysis.overall_stability(df[key], strong_cv=strong_cv)
+
+            st.subheader("🎯 Diagnóstico")
+            k1, k2, k3, k4, k5 = st.columns(5)
+            k1.metric(f"{key} (atual)", f"{cur_val:.2f}", delta=f"{delta:+.2f}")
+            k2.metric(
+                "Estabilidade do indicador-chave",
+                f"{_STAB_EMOJI.get(key_stab.classification, '⚪')} {key_stab.classification}",
+                delta=("CV —" if np.isnan(key_stab.cv) else f"CV {key_stab.cv * 100:.0f}%"),
+                delta_color="off",
+                help="Estabilidade do indicador-chave no período todo, pelo coeficiente "
+                     "de variação (desvio padrão / |média|). CV menor = mais estável.",
             )
-            for ind, stt, key_dir, lagmin, impact in triggers:
-                tendencia = "subir ↑" if key_dir > 0 else "cair ↓"
-                msg = (
-                    f"**{ind}** está **{_dir_arrow(stt.direction)}** agora "
-                    f"(z = {stt.z:+.1f}) → previsão: **{key}** tende a **{tendencia}** "
-                    f"em ~**{lagmin:g} min** · impacto {impact:.0f}%"
+            k3.metric("Principal causa", top_ind, delta=top_a["Sentido"],
+                      delta_color="off", help="Maior fatia da variância (Shapley/LMG).")
+            k4.metric(
+                "Impacto (fatia real)",
+                f"{top_a['Fatia da variância (%)']:.0f}%",
+                help="Fração real e não-sobreposta da variância do indicador-chave "
+                     "explicada por este driver (decomposição de Shapley/LMG).",
+            )
+            k5.metric(
+                "Variância total explicada",
+                f"{attribution.model_r2 * 100:.0f}%",
+                help="R² do modelo com todos os drivers (após remover redundâncias).",
+            )
+
+            c_gauge, c_hist = st.columns([1, 2])
+            c_gauge.plotly_chart(
+                fig_gauge(top_a["Fatia da variância (%)"], top_ind),
+                use_container_width=True,
+            )
+            c_hist.plotly_chart(fig_key_timeline(df, key), use_container_width=True)
+
+            # --- Gatilhos acionáveis (forte variação no período todo) ---- #
+            st.subheader("🚨 Gatilhos acionáveis")
+            impact_by_ind = dict(
+                zip(atable["Indicador"], atable["Fatia da variância (%)"])
+            )
+            triggers = []
+            for ind in atable["Indicador"]:
+                stab = stabilities[ind]
+                res = results[ind]
+                corr = res.corr_at_lag
+                lagmin = res.best_lag_minutes
+                # gatilho: driver com FORTE VARIAÇÃO no período que ANTECEDE a chave
+                if stab.strong and lagmin > 0 and not np.isnan(corr):
+                    key_dir = stab.trend * (1 if corr >= 0 else -1)
+                    triggers.append((ind, stab, key_dir, lagmin, impact_by_ind[ind]))
+
+            if not triggers:
+                st.success(
+                    f"Nenhum indicador apresentou variação forte (CV ≥ {var_strong_pct}%) "
+                    "no período analisado, ou os que variaram não antecedem o "
+                    "indicador-chave. Sem gatilhos."
                 )
-                (st.error if key_dir < 0 else st.warning)(msg)
+            else:
+                st.caption(
+                    f"Indicadores com **forte variação** no período todo (CV ≥ "
+                    f"{var_strong_pct}%) que **antecedem** o indicador-chave — prováveis "
+                    "causas a monitorar/controlar."
+                )
+                for ind, stab, key_dir, lagmin, impact in triggers:
+                    tendencia = "subir ↑" if key_dir > 0 else "cair ↓"
+                    msg = (
+                        f"**{ind}** teve **forte variação** no período "
+                        f"(CV {stab.cv * 100:.0f}%, {_dir_arrow(stab.trend)}) e antecede "
+                        f"**{key}** em ~**{lagmin:g} min** → influência provável: "
+                        f"**{key}** tende a **{tendencia}** · fatia {impact:.0f}%"
+                    )
+                    (st.error if key_dir < 0 else st.warning)(msg)
 
-        # --- Evidência: impacto causa→efeito na linha de tempo real ----- #
-        st.subheader("🔍 Evidência do impacto (causa → efeito)")
-        event = analysis.detect_main_event(
-            df[res_top.indicator], res_top.best_lag_samples, info.step_minutes
-        )
-        if event is None:
-            st.info("Sem distúrbio significativo na variável principal para destacar.")
-        else:
-            st.caption(
-                f"Maior distúrbio em **{res_top.indicator}** por volta de "
-                f"**{event.peak_time:%d/%m %H:%M}** (z = {event.peak_z:+.1f}); o efeito "
-                f"em **{key}** aparece ~**{event.lag_minutes:g} min** depois (região verde)."
+            # --- Evidência: chave × driver #1 (unidades reais, eixo duplo) #
+            st.subheader("🔍 Evidência do impacto (causa → efeito)")
+            st.plotly_chart(fig_dual_axis(df, key, top_ind), use_container_width=True)
+
+            event = analysis.detect_main_event(
+                df[res_top.indicator], res_top.best_lag_samples, info.step_minutes
             )
-            st.plotly_chart(fig_impact(df, key, res_top, event), use_container_width=True)
+            if event is None:
+                st.info("Sem distúrbio significativo na variável principal para destacar.")
+            else:
+                st.caption(
+                    f"Maior distúrbio em **{res_top.indicator}** por volta de "
+                    f"**{event.peak_time:%d/%m %H:%M}** (z = {event.peak_z:+.1f}); o efeito "
+                    f"em **{key}** aparece ~**{event.lag_minutes:g} min** depois (região verde)."
+                )
+                st.plotly_chart(fig_impact(df, key, res_top, event), use_container_width=True)
 
-        # --- Tabela de drivers ------------------------------------------ #
-        st.subheader("📑 Drivers do indicador-chave")
-        board = ranking[[
-            "Indicador", "Sentido", "Lag ótimo (min)",
-            "Impacto (%)", "Contribuição relativa (%)",
-        ]].copy()
-        board.insert(1, "Status atual", [_status_label(statuses[i]) for i in ranking["Indicador"]])
-        st.dataframe(board, use_container_width=True, hide_index=True)
-        st.download_button(
-            "⬇️ Baixar painel (Excel)",
-            data=to_excel_bytes(board),
-            file_name="painel_drivers.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+            # --- Tabela de drivers (fatia rigorosa) --------------------- #
+            st.subheader("📑 Drivers do indicador-chave")
+            board = atable.copy()
+            board.insert(
+                1, "Estabilidade (período)",
+                [_stab_label(stabilities[i]) for i in atable["Indicador"]],
+            )
+            st.dataframe(board, use_container_width=True, hide_index=True)
+            st.caption(
+                "**Estabilidade (período)**: avaliação no período todo pelo coeficiente "
+                f"de variação (CV = σ/|μ|) — 🟢 Estável (CV<5%), 🟡 Moderada (5–{var_strong_pct}%), "
+                f"🔴 Instável (≥{var_strong_pct}%). **Fatia da variância (%)**: parcela real "
+                "e não-sobreposta da variação do indicador-chave atribuída a cada driver. "
+                "**Contribuição no modelo (%)**: a mesma fatia normalizada para 100%. "
+                "**VIF**: grau de redundância remanescente."
+            )
+            st.download_button(
+                "⬇️ Baixar painel (Excel)",
+                data=to_excel_bytes(board),
+                file_name="painel_drivers.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+            if not attribution.removed.empty:
+                with st.expander(
+                    f"🔧 {len(attribution.removed)} indicador(es) removido(s) por redundância"
+                ):
+                    st.caption(
+                        "Removidos por multicolinearidade alta (explicavam a mesma "
+                        "variação de outro driver). A fatia ficou com o representante mantido."
+                    )
+                    st.dataframe(
+                        attribution.removed, use_container_width=True, hide_index=True
+                    )
 
     # ===================================================================== #
     # ABA — Análise Detalhada
@@ -459,3 +648,36 @@ if "ranking" in st.session_state and st.session_state.get("key") == key:
                 f"Apenas {res.n_points} pontos no lag ótimo — correlação pouco "
                 "confiável. Reduza a janela de lag ou use uma série mais longa."
             )
+
+        # --- Matriz de correlação entre todos os indicadores ------------ #
+        st.subheader("🧮 Matriz de correlação")
+        st.caption(
+            "Correlação de Pearson (sem defasagem) entre todos os indicadores e o "
+            "indicador-chave. Útil para ver relações diretas/inversas e identificar "
+            "indicadores redundantes entre si (valores próximos de ±1)."
+        )
+        st.plotly_chart(fig_corr_matrix(df), use_container_width=True)
+
+        # --- Comparação livre de pares (eixo duplo) --------------------- #
+        st.subheader("📈 Comparar variáveis (eixo duplo)")
+        st.caption(
+            "Selecione duas variáveis para acompanhar a variação ao longo do tempo, "
+            "cada uma em seu eixo (principal e secundário), em unidades reais."
+        )
+        all_vars = list(df.columns)
+        pc1, pc2 = st.columns(2)
+        with pc1:
+            var_a = st.selectbox(
+                "Variável — eixo principal (esq.)", options=all_vars, index=0,
+                key="pair_primary",
+            )
+        with pc2:
+            default_b = 1 if len(all_vars) > 1 else 0
+            var_b = st.selectbox(
+                "Variável — eixo secundário (dir.)", options=all_vars,
+                index=default_b, key="pair_secondary",
+            )
+        if var_a == var_b:
+            st.info("Selecione duas variáveis diferentes para a comparação.")
+        else:
+            st.plotly_chart(fig_dual_axis(df, var_a, var_b), use_container_width=True)

@@ -16,13 +16,16 @@ o indicador para frente no tempo (atrasá-lo) alinha-o com o indicador-chave.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
+from math import factorial
 
 import numpy as np
 import pandas as pd
 
 try:
     from sklearn.feature_selection import mutual_info_regression
+    from sklearn.linear_model import LinearRegression
     _HAS_SKLEARN = True
 except ImportError:  # pragma: no cover - dependência opcional
     _HAS_SKLEARN = False
@@ -145,6 +148,59 @@ def detect_and_resample(
         irregular=irregular,
     )
     return regular, info
+
+
+def composite_average(
+    df: pd.DataFrame, lab_indicators: list[str], period_hours: float
+) -> tuple[pd.DataFrame, ResampleInfo]:
+    """Trata variáveis de laboratório (amostras compostas de N horas).
+
+    Uma amostra de laboratório registrada no instante T representa a **média do
+    período** ``(T − N horas, T]`` (coleta composta e homogeneizada) — logo **não
+    pode ser interpolada**. Para tornar todos os indicadores comparáveis nessa
+    mesma base, para cada instante T de coleta de laboratório calcula-se a **média
+    de TODOS os indicadores** na janela ``(T − N horas, T]``. As variáveis de
+    laboratório, tendo um único valor na janela, resultam no próprio valor reportado.
+
+    As âncoras são os instantes em que há valor de alguma variável de laboratório.
+    Retorna ``(df_composto, info)`` indexado por essas âncoras (sem interpolação).
+    """
+    missing = [c for c in lab_indicators if c not in df.columns]
+    if missing:
+        raise ValueError(f"Indicadores de laboratório inexistentes: {missing}")
+    if not lab_indicators:
+        raise ValueError("Nenhuma variável de laboratório informada.")
+    if period_hours <= 0:
+        raise ValueError("O período da análise composta deve ser positivo.")
+
+    period = pd.Timedelta(hours=period_hours)
+    lab_present = df[lab_indicators].notna().any(axis=1)
+    anchors = df.index[lab_present]
+    if len(anchors) < 2:
+        raise ValueError(
+            "São necessárias ao menos 2 coletas de laboratório para a análise."
+        )
+
+    rows = {
+        T: df.loc[(df.index > T - period) & (df.index <= T)].mean(numeric_only=True)
+        for T in anchors
+    }
+    comp = pd.DataFrame(rows).T.sort_index()
+    comp.index.name = df.index.name or "datetime"
+
+    # Irregularidade do agendamento de laboratório (espaçamento entre coletas)
+    diffs = np.diff(comp.index.values).astype("timedelta64[s]").astype(float)
+    irregular = bool(len(diffs) and np.std(diffs) > 0.1 * np.median(diffs))
+
+    total_cells = comp.size if comp.size else 1
+    info = ResampleInfo(
+        step_minutes=round(period_hours * 60.0, 6),
+        n_rows=len(comp),
+        n_gaps_filled=0,
+        nan_fraction=float(comp.isna().sum().sum()) / total_cells,
+        irregular=irregular,
+    )
+    return comp, info
 
 
 # --------------------------------------------------------------------------- #
@@ -408,3 +464,280 @@ def recent_status(
     return CurrentStatus(
         z=z, disturbed=abs(z) >= threshold, direction=int(np.sign(z))
     )
+
+
+@dataclass
+class StabilityResult:
+    mean: float
+    std: float
+    cv: float             # coeficiente de variação σ/|μ| (fração; nan se μ≈0)
+    range_rel: float      # amplitude relativa (max−min)/|μ|
+    trend: int            # sinal da tendência líquida no período (+1/-1/0)
+    classification: str   # 'Estável' | 'Moderada' | 'Instável' | '—'
+    strong: bool          # variação forte (cv ≥ strong_cv)
+
+
+def overall_stability(
+    series: pd.Series, moderate_cv: float = 0.05, strong_cv: float = 0.15
+) -> StabilityResult:
+    """Avalia a estabilidade de um indicador no PERÍODO TODO analisado.
+
+    Usa o **coeficiente de variação** ``CV = σ / |μ|`` (desvio padrão sobre o
+    módulo da média) — métrica padrão de estabilidade de processo: mede o quanto o
+    indicador oscilou em relação ao seu nível típico ao longo de toda a série.
+
+    Classificação (padrão): ``CV < 5%`` Estável; ``5%–15%`` Moderada; ``≥ 15%``
+    Instável. ``strong`` indica variação forte (``CV ≥ strong_cv``), usada nos
+    gatilhos. ``trend`` é o sinal da diferença entre a média do último e do
+    primeiro terço do período (tendência líquida).
+
+    Observação: o CV não é uma medida válida quando a série cruza o zero (média
+    próxima de zero / sinal que muda); nesses casos a classificação retorna '—'.
+    """
+    s = series.dropna()
+    if len(s) < 3:
+        return StabilityResult(float("nan"), 0.0, float("nan"),
+                               float("nan"), 0, "—", False)
+
+    mean, std = float(s.mean()), float(s.std())
+    # CV só é interpretável para séries que não cruzam o zero (nível bem definido)
+    cv_valid = float(s.min()) > 0 or float(s.max()) < 0
+    cv = std / abs(mean) if cv_valid else float("nan")
+    range_rel = (float(s.max()) - float(s.min())) / abs(mean) if cv_valid else float("nan")
+
+    k = max(1, len(s) // 3)
+    trend = int(np.sign(s.iloc[-k:].mean() - s.iloc[:k].mean()))
+
+    if np.isnan(cv):
+        classification, strong = "—", False
+    elif cv < moderate_cv:
+        classification, strong = "Estável", False
+    elif cv < strong_cv:
+        classification, strong = "Moderada", False
+    else:
+        classification, strong = "Instável", True
+
+    return StabilityResult(mean, std, cv, range_rel, trend, classification, strong)
+
+
+# --------------------------------------------------------------------------- #
+# 7. Atribuição rigorosa de variância (Shapley/LMG) + multicolinearidade
+# --------------------------------------------------------------------------- #
+def build_design_matrix(
+    df: pd.DataFrame, key: str, results: dict[str, LagResult]
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Monta a matriz de preditores alinhados pelo lag ótimo de cada um.
+
+    Cada indicador é deslocado pela sua própria defasagem ótima
+    (``res.best_lag_samples``), de modo que cada coluna fica temporalmente
+    alinhada com o efeito no indicador-chave. Linhas com NaN são descartadas.
+
+    Retorna ``(X, y)`` onde ``X`` são os indicadores alinhados e ``y`` é a chave.
+    """
+    cols = {ind: df[ind].shift(res.best_lag_samples) for ind, res in results.items()}
+    aligned = pd.DataFrame(cols, index=df.index)
+    data = pd.concat([df[key].rename("__key__"), aligned], axis=1).dropna()
+    y = data["__key__"]
+    X = data.drop(columns="__key__")
+    return X, y
+
+
+def _r2(X: np.ndarray, y: np.ndarray) -> float:
+    """R² de uma regressão linear de y sobre X (≥ 0; 0 se X vazio)."""
+    if X.shape[1] == 0:
+        return 0.0
+    model = LinearRegression().fit(X, y)
+    return max(float(model.score(X, y)), 0.0)
+
+
+def compute_vif(X: pd.DataFrame) -> pd.Series:
+    """Fator de Inflação de Variância (VIF) de cada coluna.
+
+    ``VIF_i = 1 / (1 - R²_i)``, com ``R²_i`` da regressão da coluna *i* contra as
+    demais. VIF alto (> 5–10) indica multicolinearidade forte.
+    """
+    Xv = X.to_numpy(dtype=float)
+    vifs = {}
+    for i, col in enumerate(X.columns):
+        others = np.delete(Xv, i, axis=1)
+        r2 = _r2(others, Xv[:, i])
+        vifs[col] = float("inf") if r2 >= 1.0 else 1.0 / (1.0 - r2)
+    return pd.Series(vifs)
+
+
+def reduce_multicollinearity(
+    X: pd.DataFrame,
+    y: pd.Series,
+    corr_threshold: float = 0.9,
+    vif_threshold: float = 10.0,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Remove indicadores redundantes (multicolinearidade), mantendo representantes.
+
+    1. **Cluster por correlação:** colunas com ``|corr| ≥ corr_threshold`` entre si
+       formam um grupo; mantém-se a mais correlacionada com ``y`` e removem-se as outras.
+    2. **VIF iterativo:** enquanto ``max(VIF) > vif_threshold``, remove-se a de maior VIF.
+
+    Retorna ``(X_reduzido, removidos)`` onde ``removidos`` tem colunas
+    ``Removido``, ``Mantido``, ``Motivo``.
+    """
+    removed: list[dict] = []
+    if X.shape[1] <= 1:
+        return X, pd.DataFrame(columns=["Removido", "Mantido", "Motivo"])
+
+    # Relevância de cada coluna com o alvo (|corr| com y), para escolher representantes
+    rel = X.apply(lambda c: abs(np.corrcoef(c, y)[0, 1]) if c.std() else 0.0)
+    order = rel.sort_values(ascending=False).index.tolist()
+
+    # 1) Cluster por correlação entre preditores
+    corr = X.corr().abs()
+    keep, assigned = [], set()
+    for f in order:
+        if f in assigned:
+            continue
+        keep.append(f)
+        assigned.add(f)
+        for g in order:
+            if g != f and g not in assigned and corr.loc[f, g] >= corr_threshold:
+                assigned.add(g)
+                removed.append({
+                    "Removido": g, "Mantido": f,
+                    "Motivo": f"|corr| {corr.loc[f, g]:.2f} ≥ {corr_threshold:g} com {f}",
+                })
+    Xk = X[keep]
+
+    # 2) VIF iterativo no conjunto mantido
+    while Xk.shape[1] > 1:
+        vif = compute_vif(Xk)
+        worst, worst_vif = vif.idxmax(), vif.max()
+        if worst_vif <= vif_threshold:
+            break
+        removed.append({
+            "Removido": worst, "Mantido": "—",
+            "Motivo": f"VIF {worst_vif:.1f} > {vif_threshold:g}",
+        })
+        Xk = Xk.drop(columns=worst)
+
+    return Xk, pd.DataFrame(removed, columns=["Removido", "Mantido", "Motivo"])
+
+
+def relative_importance(
+    X: pd.DataFrame, y: pd.Series, max_exact: int = 10, n_perm: int = 400, seed: int = 0
+) -> tuple[dict[str, float], float]:
+    """Decomposição de Shapley/LMG do R² entre os preditores.
+
+    A fatia de cada preditor é a média da sua contribuição marginal
+    ``R²(S∪{i}) − R²(S)`` sobre todos os subconjuntos ``S`` que não o contêm. As
+    fatias são **não-negativas, não-sobrepostas e somam o R² do modelo completo**.
+
+    - ``p ≤ max_exact``: cálculo exato (todos os 2^p subconjuntos, com cache).
+    - ``p > max_exact``: aproximação por ``n_perm`` permutações aleatórias.
+
+    Retorna ``(shares, model_r2)`` com ``shares`` em unidades de R² (fração da
+    variância de ``y``).
+    """
+    feats = list(X.columns)
+    p = len(feats)
+    Xv = X.to_numpy(dtype=float)
+    yv = y.to_numpy(dtype=float)
+
+    cache: dict[tuple[int, ...], float] = {}
+
+    def r2(subset: tuple[int, ...]) -> float:
+        if subset not in cache:
+            cache[subset] = _r2(Xv[:, list(subset)], yv) if subset else 0.0
+        return cache[subset]
+
+    shares = {f: 0.0 for f in feats}
+    if p == 0:
+        return shares, 0.0
+
+    if p <= max_exact:
+        idx = range(p)
+        for i in idx:
+            others = [j for j in idx if j != i]
+            contrib = 0.0
+            for k in range(len(others) + 1):
+                w = factorial(k) * factorial(p - k - 1) / factorial(p)
+                for S in itertools.combinations(others, k):
+                    contrib += w * (r2(tuple(sorted(S + (i,)))) - r2(tuple(sorted(S))))
+            shares[feats[i]] = contrib
+    else:
+        rng = np.random.default_rng(seed)
+        base = list(range(p))
+        for _ in range(n_perm):
+            cur: tuple[int, ...] = ()
+            prev = 0.0
+            for j in rng.permutation(base):
+                nxt = tuple(sorted(cur + (int(j),)))
+                val = r2(nxt)
+                shares[feats[int(j)]] += val - prev
+                cur, prev = nxt, val
+        for f in shares:
+            shares[f] /= n_perm
+
+    return shares, r2(tuple(range(p)))
+
+
+@dataclass
+class AttributionResult:
+    table: pd.DataFrame       # ranking por fatia de variância (ver colunas abaixo)
+    model_r2: float           # R² do modelo completo (variância total explicada)
+    n_samples: int            # nº de linhas usadas (após alinhar lags e dropna)
+    removed: pd.DataFrame      # indicadores removidos por redundância
+
+
+def robust_attribution(
+    df: pd.DataFrame,
+    key: str,
+    results: dict[str, LagResult],
+    remove_collinear: bool = True,
+    corr_threshold: float = 0.9,
+    vif_threshold: float = 10.0,
+    max_exact: int = 10,
+    n_perm: int = 400,
+) -> AttributionResult:
+    """Atribuição rigorosa: fatia real (não-sobreposta) da variância por driver.
+
+    Encadeia: matriz alinhada por lag → (opcional) remoção de multicolinearidade →
+    decomposição de Shapley/LMG. A tabela traz, por indicador mantido:
+    ``Indicador``, ``Lag (min)``, ``Sentido``, ``Fatia da variância (%)``
+    (= share×100), ``Contribuição no modelo (%)`` (= share/model_r2×100) e ``VIF``.
+
+    ``remove_collinear``: se ``False``, mantém todos os indicadores (sem eliminar
+    redundâncias) — o VIF continua sendo reportado como alerta.
+    """
+    X, y = build_design_matrix(df, key, results)
+    cols = ["Indicador", "Lag (min)", "Sentido",
+            "Fatia da variância (%)", "Contribuição no modelo (%)", "VIF"]
+
+    if X.shape[1] == 0 or len(y) < 5:
+        empty = pd.DataFrame(columns=cols)
+        return AttributionResult(empty, 0.0, len(y), pd.DataFrame())
+
+    if remove_collinear:
+        Xk, removed = reduce_multicollinearity(X, y, corr_threshold, vif_threshold)
+    else:
+        Xk = X
+        removed = pd.DataFrame(columns=["Removido", "Mantido", "Motivo"])
+    shares, model_r2 = relative_importance(Xk, y, max_exact=max_exact, n_perm=n_perm)
+    vif = compute_vif(Xk) if Xk.shape[1] > 1 else pd.Series({c: 1.0 for c in Xk.columns})
+
+    rows = []
+    for ind in Xk.columns:
+        res = results[ind]
+        corr = res.corr_at_lag
+        rows.append({
+            "Indicador": ind,
+            "Lag (min)": res.best_lag_minutes,
+            "Sentido": "Direto ↑" if (np.isnan(corr) or corr >= 0) else "Inverso ↓",
+            "Fatia da variância (%)": round(shares[ind] * 100, 1),
+            "Contribuição no modelo (%)": round(shares[ind] / model_r2 * 100, 1)
+            if model_r2 > 0 else 0.0,
+            "VIF": round(float(vif.get(ind, 1.0)), 2),
+        })
+    table = (
+        pd.DataFrame(rows, columns=cols)
+        .sort_values("Fatia da variância (%)", ascending=False)
+        .reset_index(drop=True)
+    )
+    return AttributionResult(table, float(model_r2), len(y), removed)

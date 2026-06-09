@@ -31,14 +31,16 @@ def generate(n: int = 1000, step_min: int = 1, seed: int = 42) -> pd.DataFrame:
         x = np.convolve(x, np.ones(window) / window, mode="same")[:n]
         return x - x.mean()
 
-    # Causas independentes entre si (evita correlação espúria)
-    vazao = smooth_noise(window=3)
-    pressao = smooth_noise(window=3)
+    # Causas independentes entre si (evita correlação espúria), com níveis médios
+    # físicos para que o coeficiente de variação (estabilidade) seja interpretável.
+    vazao = smooth_noise(window=3) * 3 + 50
+    pressao = smooth_noise(window=3) * 2 + 10
 
-    # Efeito = combinação das causas DESLOCADAS + ruído
+    # Efeito = combinação das causas DESLOCADAS + ruído (em torno de um nível)
     temperatura = (
-        0.8 * pd.Series(vazao).shift(LAG_VAZAO).fillna(0).to_numpy()
-        + 1.5 * pd.Series(pressao).shift(LAG_PRESSAO).fillna(0).to_numpy()
+        70.0
+        + 0.8 * pd.Series(vazao - 50).shift(LAG_VAZAO).fillna(0).to_numpy()
+        + 1.5 * pd.Series(pressao - 10).shift(LAG_PRESSAO).fillna(0).to_numpy()
         + rng.normal(0, 1.0, n)
     )
 

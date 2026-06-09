@@ -10,3 +10,5 @@ sample_data.xlsx
 
 # Configs locais do editor/Claude
 .claude/
+
+sample_data_lab.xlsx
