@@ -19,10 +19,21 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+# Fuso de Brasília para os carimbos de data/hora do relatório. Importante porque
+# servidores (ex.: Streamlit Community Cloud) rodam em UTC — sem isso o relatório
+# mostraria o horário errado. Usa a base de fusos (DST histórico) quando
+# disponível e cai para o offset fixo −03:00 caso o tzdata não exista.
+try:
+    from zoneinfo import ZoneInfo
+    _BR_TZ = ZoneInfo("America/Sao_Paulo")
+except Exception:  # pragma: no cover - ambiente sem tzdata
+    _BR_TZ = timezone(timedelta(hours=-3))
 
 try:  # streamlit é opcional para permitir testes/compilação isolados
     import streamlit as st
@@ -257,8 +268,11 @@ def make_report_item(
 
 
 def now_str() -> str:
-    """Data/hora atual formatada (pt-BR). Isolada para facilitar testes."""
-    return pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
+    """Data/hora atual no fuso de **Brasília**, formatada (pt-BR).
+
+    Independe do fuso do servidor onde o app roda (ex.: UTC na nuvem).
+    """
+    return datetime.now(_BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
 
 
 # --------------------------------------------------------------------------- #
