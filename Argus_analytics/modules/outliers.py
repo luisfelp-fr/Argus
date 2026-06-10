@@ -9,6 +9,8 @@ remover os outliers da base.
 
 from __future__ import annotations
 
+import io
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -17,6 +19,42 @@ from utils import validation
 from utils.helpers import numeric_cols, make_report_item, add_to_report, now_str
 from utils.plotting import boxplot, outlier_scatter
 from utils.interpretation import interpret_outliers
+from utils.glossary import GLOSSARY
+
+
+def _to_excel_bytes(df: pd.DataFrame) -> bytes:
+    """Serializa um DataFrame em bytes de um .xlsx (sem coluna de índice)."""
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Sem outliers", index=False)
+    return buffer.getvalue()
+
+
+def apply_clean_base(cleaned: pd.DataFrame, col: str, n_removed: int) -> None:
+    """Passa a usar a base sem outliers nas próximas análises.
+
+    Guarda um backup da base original (apenas uma vez) para permitir restauração
+    e registra um histórico dos tratamentos aplicados.
+    """
+    if "df_original" not in st.session_state:
+        st.session_state["df_original"] = st.session_state["df"]
+        st.session_state["col_types_original"] = st.session_state["col_types"]
+    # As colunas (e portanto os tipos) não mudam ao remover linhas.
+    st.session_state["df"] = cleaned.reset_index(drop=True)
+    st.session_state["outliers_applied"] = True
+    st.session_state.setdefault("outliers_removed_log", []).append(
+        {"variável": col, "removidos": int(n_removed)}
+    )
+
+
+def restore_original_base() -> None:
+    """Restaura a base original e descarta a versão filtrada."""
+    if "df_original" in st.session_state:
+        st.session_state["df"] = st.session_state.pop("df_original")
+        st.session_state["col_types"] = st.session_state.pop("col_types_original")
+    st.session_state["outliers_applied"] = False
+    st.session_state.pop("df_no_outliers", None)
+    st.session_state.pop("outliers_removed_log", None)
 
 
 def detect_iqr(s: np.ndarray, k: float = 1.5) -> np.ndarray:
@@ -58,9 +96,29 @@ def render(state) -> None:
         "podem representar erro de medição, falha de processo ou eventos reais importantes."
     )
 
+    # Banner: indica quando as análises estão usando a base sem outliers
+    if state.get("outliers_applied"):
+        log = state.get("outliers_removed_log", [])
+        resumo = ", ".join(f"{r['variável']} (−{r['removidos']})" for r in log) or "—"
+        b1, b2 = st.columns([0.72, 0.28])
+        b1.success(
+            f"🧹 As análises estão usando a **base sem outliers** "
+            f"({len(df)} linhas). Tratamentos: {resumo}."
+        )
+        if b2.button("↩️ Restaurar base original", use_container_width=True, key="out_restore"):
+            restore_original_base()
+            st.rerun()
+
+    _method_help = {
+        "IQR (1,5×amplitude interquartílica)": GLOSSARY["iqr"],
+        "Z-score (|z| > 3)": GLOSSARY["zscore"],
+        "MAD (desvio absoluto mediano)": GLOSSARY["mad"],
+    }
     c1, c2 = st.columns(2)
     col = c1.selectbox("Variável numérica:", numeric_cols(state))
-    method_label = c2.selectbox("Método de detecção:", list(METHODS.keys()))
+    method_label = c2.selectbox("Método de detecção:", list(METHODS.keys()),
+                                help="IQR, Z-score ou MAD — passe o mouse para entender "
+                                     "as diferenças. " + GLOSSARY["outlier"])
 
     series = validation.clean_numeric(df[col], min_n=4)
     if series is None:
@@ -73,8 +131,9 @@ def render(state) -> None:
 
     m = st.columns(3)
     m[0].metric("Total de valores", len(data))
-    m[1].metric("Outliers detectados", n_out)
-    m[2].metric("% outliers", f"{(100*n_out/len(data)):.1f}%")
+    m[1].metric("Outliers detectados", n_out, help=_method_help.get(method_label))
+    m[2].metric("% outliers", f"{(100*n_out/len(data)):.1f}%",
+                help="Proporção de valores marcados como outliers pelo método escolhido.")
 
     tabs = st.tabs(["📦 Boxplot", "🔵 Dispersão", "📋 Outliers", "🗣️ Interpretação"])
 
@@ -103,15 +162,47 @@ def render(state) -> None:
         else:
             st.warning(interp)
 
-    # Opção de remover outliers (cria cópia limpa em session)
+    # Tratamento: gerar base sem os outliers detectados (download + aplicar)
     if n_out > 0:
         st.divider()
-        if st.checkbox("🧹 Criar cópia da base **sem** estes outliers (não altera o original)"):
-            clean_idx = series.index[~mask]
-            cleaned = df.loc[df.index.isin(clean_idx) | df[col].isna()].copy()
-            st.session_state["df_no_outliers"] = cleaned
-            st.success(f"Cópia sem outliers criada ({len(cleaned)} linhas). "
-                       "Disponível em `session_state['df_no_outliers']`.")
+        st.markdown("#### 🧹 Tratar os outliers")
+        st.caption(
+            "Gere a base **sem** os outliers detectados nesta variável. O arquivo "
+            "original que você importou nunca é alterado."
+        )
+
+        clean_idx = series.index[~mask]
+        cleaned = df.loc[df.index.isin(clean_idx) | df[col].isna()].copy()
+        st.session_state["df_no_outliers"] = cleaned
+        n_removed = len(df) - len(cleaned)
+        st.caption(f"Resultado: **{len(cleaned)} linhas** (removidas {n_removed}).")
+
+        d1, d2, d3 = st.columns(3)
+        d1.download_button(
+            "📥 Baixar (Excel)",
+            data=_to_excel_bytes(cleaned),
+            file_name=f"base_sem_outliers_{col}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="out_dl_xlsx",
+        )
+        d2.download_button(
+            "📥 Baixar (CSV)",
+            data=cleaned.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"base_sem_outliers_{col}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="out_dl_csv",
+        )
+        if d3.button("✅ Usar nas próximas análises", use_container_width=True, key="out_apply"):
+            apply_clean_base(cleaned, col, n_removed)
+            st.rerun()
+
+        st.caption(
+            "💡 *Baixar* salva a planilha no seu computador. *Usar nas próximas análises* "
+            "faz todas as telas (descritiva, correlação, etc.) passarem a considerar a "
+            "base filtrada — você pode reverter a qualquer momento."
+        )
 
     st.divider()
     if st.button("➕ Adicionar ao relatório", key="out_add"):

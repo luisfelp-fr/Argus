@@ -194,6 +194,8 @@ def sidebar() -> None:
         if has_data():
             n_items = len(st.session_state.get("report_items", []))
             st.success(f"✅ Dados carregados\n\n📑 {n_items} análise(s) no relatório")
+            if st.session_state.get("outliers_applied"):
+                st.warning("🧹 Analisando a base **sem outliers**")
         else:
             st.info("📂 Nenhum dado carregado ainda.")
 

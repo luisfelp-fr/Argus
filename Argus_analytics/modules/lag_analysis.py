@@ -22,6 +22,7 @@ from utils.helpers import (
 )
 from utils.plotting import lag_curve, ranking_bar
 from utils.interpretation import interpret_lag
+from utils.glossary import GLOSSARY
 
 
 def cross_correlation(key: pd.Series, other: pd.Series, max_lag: int,
@@ -65,18 +66,22 @@ def render(state) -> None:
 
     num = numeric_cols(state)
     c1, c2 = st.columns(2)
-    target = c1.selectbox("Variável alvo (efeito):", num)
+    target = c1.selectbox("Variável alvo (efeito):", num,
+                          help="A variável cujo comportamento você quer explicar.")
     dt_col = c2.selectbox("Coluna de data/hora:", datetime_cols(state))
     explan = st.multiselect(
         "Variáveis explicativas (possíveis causas):",
         [c for c in num if c != target],
         default=[c for c in num if c != target][: min(5, len(num) - 1)],
+        help=GLOSSARY["cross_correlation"],
     )
 
     c3, c4 = st.columns(2)
-    step_min = c3.number_input("Intervalo do lag (minutos por passo):", min_value=1, value=5)
+    step_min = c3.number_input("Intervalo do lag (minutos por passo):", min_value=1, value=5,
+                               help=GLOSSARY["lag"])
     max_lag_min = c4.number_input("Lag máximo a testar (minutos):", min_value=int(step_min),
-                                  value=int(step_min) * 12, step=int(step_min))
+                                  value=int(step_min) * 12, step=int(step_min),
+                                  help="Maior atraso (em minutos) que será testado entre causa e efeito.")
 
     if not explan:
         st.warning("Selecione ao menos uma variável explicativa.")

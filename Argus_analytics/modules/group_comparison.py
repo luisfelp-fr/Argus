@@ -19,6 +19,7 @@ from utils.helpers import (
 )
 from utils.plotting import grouped_box
 from utils.interpretation import interpret_group_test
+from utils.glossary import GLOSSARY
 
 
 def _groups(df: pd.DataFrame, value_col: str, group_col: str) -> list[np.ndarray]:
@@ -84,8 +85,14 @@ def render(state) -> None:
     st.caption(f"💡 Com {n_groups} grupos e "
                f"{'distribuições aproximadamente normais' if parametric_ok else 'normalidade não confirmada'}, "
                f"o teste sugerido é **{suggested}**.")
-    test_name = st.radio("Teste estatístico:", options,
-                         index=options.index(suggested), horizontal=True)
+    _test_help = {
+        "Teste t": GLOSSARY["teste_t"], "Mann-Whitney": GLOSSARY["mann_whitney"],
+        "ANOVA": GLOSSARY["anova"], "Kruskal-Wallis": GLOSSARY["kruskal"],
+    }
+    test_name = st.radio(
+        "Teste estatístico:", options, index=options.index(suggested), horizontal=True,
+        help="Paramétricos (t, ANOVA) assumem normalidade; não paramétricos "
+             "(Mann-Whitney, Kruskal-Wallis) não exigem. " + GLOSSARY["p_valor"])
 
     # Tabela resumo por grupo
     summary = sub.groupby(group_col, observed=True)[value_col].agg(
@@ -104,9 +111,10 @@ def render(state) -> None:
         st.dataframe(summary, use_container_width=True, hide_index=True)
     with tabs[2]:
         m = st.columns(3)
-        m[0].metric("Teste", test_name)
-        m[1].metric("Estatística", f"{stat:.4f}" if not np.isnan(stat) else "—")
-        m[2].metric("p-valor", f"{p:.4f}" if not np.isnan(p) else "—")
+        m[0].metric("Teste", test_name, help=_test_help.get(test_name))
+        m[1].metric("Estatística", f"{stat:.4f}" if not np.isnan(stat) else "—",
+                    help="Valor da estatística do teste; sozinho não conclui — use o p-valor.")
+        m[2].metric("p-valor", f"{p:.4f}" if not np.isnan(p) else "—", help=GLOSSARY["p_valor"])
 
     interp = interpret_group_test(test_name, p)
     with tabs[3]:

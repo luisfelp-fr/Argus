@@ -25,6 +25,10 @@ def _load(file, sheet_name: str | None) -> None:
     st.session_state["df"] = df
     st.session_state["col_types"] = col_types
     st.session_state["file_name"] = getattr(file, "name", "arquivo")
+    # Limpa qualquer tratamento de outliers de uma base anterior
+    for k in ("df_original", "col_types_original", "df_no_outliers",
+              "outliers_applied", "outliers_removed_log"):
+        st.session_state.pop(k, None)
 
 
 def render(state) -> None:

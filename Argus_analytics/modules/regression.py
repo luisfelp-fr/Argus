@@ -16,6 +16,7 @@ from utils import validation
 from utils.helpers import numeric_cols, make_report_item, add_to_report, now_str
 from utils.plotting import real_vs_pred, residuals_plot
 from utils.interpretation import interpret_r2, interpret_coefficients
+from utils.glossary import GLOSSARY
 
 try:
     import statsmodels.api as sm
@@ -95,10 +96,12 @@ def render(state) -> None:
     )
 
     num = numeric_cols(state)
-    y_col = st.selectbox("Variável resposta (Y):", num)
+    y_col = st.selectbox("Variável resposta (Y):", num,
+                         help="A variável que você quer explicar/prever.")
     x_options = [c for c in num if c != y_col]
     x_cols = st.multiselect("Variáveis explicativas (X):", x_options,
-                            default=x_options[: min(2, len(x_options))])
+                            default=x_options[: min(2, len(x_options))],
+                            help=GLOSSARY["regressao"])
 
     if not x_cols:
         st.warning("Selecione ao menos uma variável explicativa.")
@@ -138,11 +141,14 @@ def render(state) -> None:
 
     with tabs[0]:
         st.caption(f"Regressão linear **{kind}** — {y_col} ~ {' + '.join(x_cols)}")
+        st.caption("Tabela de coeficientes — cada linha mostra o efeito da variável.")
         st.dataframe(coef_table, use_container_width=True, hide_index=True)
+        st.caption("ℹ️ Coeficiente, p-valor e R²: passe o mouse nos ícones ❓ abaixo.")
         m = st.columns(3)
-        m[0].metric("R²", f"{model.rsquared:.3f}")
-        m[1].metric("R² ajustado", f"{model.rsquared_adj:.3f}")
-        m[2].metric("N observações", int(model.nobs))
+        m[0].metric("R²", f"{model.rsquared:.3f}", help=GLOSSARY["r2"])
+        m[1].metric("R² ajustado", f"{model.rsquared_adj:.3f}", help=GLOSSARY["r2_aj"])
+        m[2].metric("N observações", int(model.nobs),
+                    help="Número de linhas usadas no ajuste (após remover ausentes).")
 
     fig_rp = real_vs_pred(y.to_numpy(), y_pred.to_numpy())
     fig_res = residuals_plot(y_pred.to_numpy(), residuals.to_numpy())

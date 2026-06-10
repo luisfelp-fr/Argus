@@ -16,6 +16,7 @@ from utils import validation
 from utils.helpers import numeric_cols, make_report_item, add_to_report, now_str
 from utils.plotting import histogram_with_normal, qq_plot
 from utils.interpretation import interpret_normality
+from utils.glossary import GLOSSARY
 
 
 def shapiro_test(data: np.ndarray) -> tuple[float, float]:
@@ -71,13 +72,15 @@ def render(state) -> None:
     with tabs[0]:
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**Shapiro-Wilk**")
-            st.metric("Estatística W", f"{sw_stat:.4f}")
-            st.metric("p-valor", f"{sw_p:.4f}")
+            st.markdown("**Shapiro-Wilk** ", help=GLOSSARY["shapiro"])
+            st.metric("Estatística W", f"{sw_stat:.4f}", help=GLOSSARY["shapiro"])
+            st.metric("p-valor", f"{sw_p:.4f}", help=GLOSSARY["p_valor"])
         with c2:
-            st.markdown("**Anderson-Darling**")
-            st.metric("Estatística A²", f"{ad_stat:.4f}" if not np.isnan(ad_stat) else "—")
-            st.metric("Valor crítico (5%)", f"{ad_crit:.4f}" if not np.isnan(ad_crit) else "—")
+            st.markdown("**Anderson-Darling** ", help=GLOSSARY["anderson"])
+            st.metric("Estatística A²", f"{ad_stat:.4f}" if not np.isnan(ad_stat) else "—",
+                      help=GLOSSARY["anderson"])
+            st.metric("Valor crítico (5%)", f"{ad_crit:.4f}" if not np.isnan(ad_crit) else "—",
+                      help=GLOSSARY["anderson"])
         res_table = pd.DataFrame({
             "Teste": ["Shapiro-Wilk", "Anderson-Darling"],
             "Estatística": [round(sw_stat, 4), round(ad_stat, 4)],

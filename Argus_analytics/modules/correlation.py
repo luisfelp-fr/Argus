@@ -16,6 +16,7 @@ from utils import validation
 from utils.helpers import numeric_cols, make_report_item, add_to_report, now_str
 from utils.plotting import corr_heatmap, scatter, ranking_bar
 from utils.interpretation import interpret_correlation, correlation_strength
+from utils.glossary import GLOSSARY
 
 METHODS = {"Pearson": "pearson", "Spearman": "spearman", "Kendall": "kendall"}
 
@@ -61,7 +62,12 @@ def render(state) -> None:
         chosen = st.multiselect("Variáveis numéricas:", num,
                                 default=num[: min(6, len(num))])
     with col2:
-        method_label = st.radio("Método de correlação:", list(METHODS.keys()), horizontal=False)
+        method_label = st.radio(
+            "Método de correlação:", list(METHODS.keys()), horizontal=False,
+            help="Pearson: relação linear (sensível a outliers). "
+                 "Spearman: relação monotônica por postos (robusta). "
+                 "Kendall: concordância de ordenação (bom p/ amostras pequenas). "
+                 "Todos variam de −1 a +1.")
     method = METHODS[method_label]
 
     if len(chosen) < 2:
@@ -100,7 +106,8 @@ def render(state) -> None:
             fig_sc = scatter(df[vx], df[vy])
             st.plotly_chart(fig_sc, use_container_width=True, key="corr_scatter")
             r = corr.loc[vx, vy]
-            st.metric(f"Correlação {method_label} ({vx} × {vy})", f"{r:.3f}")
+            st.metric(f"Correlação {method_label} ({vx} × {vy})", f"{r:.3f}",
+                      help=GLOSSARY["correlacao"])
 
     interp = ""
     with tabs[3]:

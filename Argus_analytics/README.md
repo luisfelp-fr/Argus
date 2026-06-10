@@ -89,6 +89,35 @@ O aplicativo abrirá no navegador (por padrão em `http://localhost:8501`).
 
 ---
 
+## 💡 Apoio didático
+
+O Argus foi pensado para quem está aprendendo estatística:
+
+- **Ícones de ajuda “❓”** ao lado de conceitos e testes (média, CV, p-valor,
+  Pearson/Spearman/Kendall, R², Cp/Cpk, lag, IQR/Z-score/MAD, etc.) — passe o
+  mouse para ler uma explicação curta e aplicada.
+- **Cards de faixas de referência** para **CV (%)**, **assimetria** e **curtose**:
+  mostram as faixas de consideração (ex.: CV baixa/moderada/alta) e **destacam
+  automaticamente** em qual faixa o valor da sua variável se encontra.
+
+---
+
+## 🧹 Tratamento de outliers
+
+Na tela **🚨 Outliers**, depois de detectar valores atípicos em uma variável, você pode:
+
+1. **📥 Baixar a base sem outliers** em **Excel** ou **CSV** — o arquivo original
+   importado nunca é alterado.
+2. **✅ Usar nas próximas análises** — todas as telas (descritiva, correlação,
+   regressão, etc.) passam a considerar a base filtrada.
+
+Quando a base filtrada está ativa, um aviso **"🧹 Analisando a base sem outliers"**
+aparece na barra lateral e no topo da tela de Outliers. Use **↩️ Restaurar base
+original** para reverter a qualquer momento (o tratamento é cumulativo entre
+variáveis e é zerado ao importar um novo arquivo).
+
+---
+
 ## 📑 Como gerar o relatório
 
 1. Em cada análise, clique em **➕ Adicionar ao relatório**.

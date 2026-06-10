@@ -15,6 +15,7 @@ import streamlit as st
 from utils import validation
 from utils.helpers import numeric_cols, make_report_item, add_to_report, now_str
 from utils.interpretation import interpret_descriptive
+from utils.glossary import GLOSSARY, band_cards, cv_bands
 
 
 def describe_series(s: pd.Series) -> dict:
@@ -66,7 +67,7 @@ def render(state) -> None:
     table = pd.DataFrame({c: describe_series(df[c]) for c in cols}).T
     table = table.round(4)
 
-    tabs = st.tabs(["📋 Tabela", "🧮 Cards", "🗣️ Interpretação"])
+    tabs = st.tabs(["📋 Tabela", "🧮 Cards", "📐 Faixas (CV)", "🗣️ Interpretação"])
 
     with tabs[0]:
         st.dataframe(table, use_container_width=True)
@@ -79,19 +80,35 @@ def render(state) -> None:
                 st.warning("Sem dados válidos.")
                 continue
             m = st.columns(4)
-            m[0].metric("Média", f"{stats['Média']:.4g}")
-            m[1].metric("Mediana", f"{stats['Mediana']:.4g}")
-            m[2].metric("Desvio padrão", f"{stats['Desvio padrão']:.4g}")
-            m[3].metric("CV (%)", f"{stats['Coef. variação (%)']:.1f}")
+            m[0].metric("Média", f"{stats['Média']:.4g}", help=GLOSSARY["media"])
+            m[1].metric("Mediana", f"{stats['Mediana']:.4g}", help=GLOSSARY["mediana"])
+            m[2].metric("Desvio padrão", f"{stats['Desvio padrão']:.4g}",
+                        help=GLOSSARY["desvio_padrao"])
+            m[3].metric("CV (%)", f"{stats['Coef. variação (%)']:.1f}", help=GLOSSARY["cv"])
             m2 = st.columns(4)
-            m2[0].metric("Mínimo", f"{stats['Mínimo']:.4g}")
-            m2[1].metric("Máximo", f"{stats['Máximo']:.4g}")
+            m2[0].metric("Mínimo", f"{stats['Mínimo']:.4g}", help=GLOSSARY["amplitude"])
+            m2[1].metric("Máximo", f"{stats['Máximo']:.4g}", help=GLOSSARY["amplitude"])
             m2[2].metric("N válidos", stats["N válidos"])
             m2[3].metric("N ausentes", stats["N ausentes"])
             st.divider()
 
-    interp_lines = []
+    # Faixas de consideração do Coeficiente de Variação
     with tabs[2]:
+        st.caption("Em qual faixa de **dispersão relativa (CV)** cada variável se "
+                   "encontra? Passe o mouse no ícone ❓ para entender o conceito.")
+        for c in cols:
+            stats = describe_series(df[c])
+            if not stats:
+                continue
+            st.markdown(f"**{c}**")
+            cv = stats["Coef. variação (%)"]
+            disp = f"{cv:.1f}%" if cv == cv else "—"
+            band_cards("Coeficiente de Variação (CV)", disp, cv_bands(cv),
+                       help_text=GLOSSARY["cv"])
+            st.divider()
+
+    interp_lines = []
+    with tabs[3]:
         for c in cols:
             stats = describe_series(df[c])
             if stats:

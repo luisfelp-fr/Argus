@@ -16,6 +16,7 @@ from utils import validation
 from utils.helpers import numeric_cols, make_report_item, add_to_report, now_str
 from utils.plotting import capability_hist
 from utils.interpretation import interpret_capability, capability_class
+from utils.glossary import GLOSSARY
 
 
 def compute_capability(data: np.ndarray, lie: float | None, lse: float | None) -> dict:
@@ -54,8 +55,8 @@ def render(state) -> None:
 
     auto_min, auto_max = float(data.min()), float(data.max())
     c1, c2 = st.columns(2)
-    use_lie = c1.checkbox("Definir Limite Inferior (LIE)", value=True)
-    use_lse = c2.checkbox("Definir Limite Superior (LSE)", value=True)
+    use_lie = c1.checkbox("Definir Limite Inferior (LIE)", value=True, help=GLOSSARY["lie_lse"])
+    use_lse = c2.checkbox("Definir Limite Superior (LSE)", value=True, help=GLOSSARY["lie_lse"])
     lie = c1.number_input("LIE — Limite Inferior de Especificação",
                           value=round(auto_min, 4)) if use_lie else None
     lse = c2.number_input("LSE — Limite Superior de Especificação",
@@ -71,10 +72,10 @@ def render(state) -> None:
     res = compute_capability(data, lie, lse)
 
     m = st.columns(4)
-    m[0].metric("Média", f"{res['média']:.4g}")
-    m[1].metric("Desvio padrão", f"{res['desvio']:.4g}")
-    m[2].metric("Cp", f"{res['Cp']:.2f}" if res["Cp"] is not None else "—")
-    m[3].metric("Cpk", f"{res['Cpk']:.2f}" if res["Cpk"] is not None else "—")
+    m[0].metric("Média", f"{res['média']:.4g}", help=GLOSSARY["media"])
+    m[1].metric("Desvio padrão", f"{res['desvio']:.4g}", help=GLOSSARY["desvio_padrao"])
+    m[2].metric("Cp", f"{res['Cp']:.2f}" if res["Cp"] is not None else "—", help=GLOSSARY["cp"])
+    m[3].metric("Cpk", f"{res['Cpk']:.2f}" if res["Cpk"] is not None else "—", help=GLOSSARY["cpk"])
 
     fig = capability_hist(series, lie, lse)
     st.plotly_chart(fig, use_container_width=True, key="cap_hist")

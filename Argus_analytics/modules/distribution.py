@@ -16,6 +16,7 @@ from utils import validation
 from utils.helpers import numeric_cols, make_report_item, add_to_report, now_str
 from utils.plotting import histogram, boxplot, density
 from utils.interpretation import interpret_skewness
+from utils.glossary import GLOSSARY, band_cards, skew_bands, kurtosis_bands
 
 
 def render(state) -> None:
@@ -56,15 +57,19 @@ def render(state) -> None:
     skew_txt = interpret_skewness(sk)
     with tabs[3]:
         c = st.columns(4)
-        c[0].metric("Média", f"{series.mean():.4g}")
-        c[1].metric("Mediana", f"{series.median():.4g}")
-        c[2].metric("Assimetria", f"{sk:.2f}")
-        c[3].metric("Curtose", f"{ku:.2f}")
+        c[0].metric("Média", f"{series.mean():.4g}", help=GLOSSARY["media"])
+        c[1].metric("Mediana", f"{series.median():.4g}", help=GLOSSARY["mediana"])
+        c[2].metric("Assimetria", f"{sk:.2f}", help=GLOSSARY["assimetria"])
+        c[3].metric("Curtose", f"{ku:.2f}", help=GLOSSARY["curtose"])
         st.markdown(f"- {skew_txt}")
-        if ku > 1:
-            st.markdown("- Curtose elevada: distribuição com **pico acentuado** e/ou caudas pesadas.")
-        elif ku < -1:
-            st.markdown("- Curtose baixa: distribuição **achatada** em relação à normal.")
+
+        st.divider()
+        st.markdown("##### 📐 Faixas de **assimetria**")
+        band_cards("Assimetria (skewness)", f"{sk:.2f}", skew_bands(sk),
+                   help_text=GLOSSARY["assimetria"])
+        st.markdown("##### 📐 Faixas de **curtose**")
+        band_cards("Curtose (em excesso)", f"{ku:.2f}", kurtosis_bands(ku),
+                   help_text=GLOSSARY["curtose"])
 
     st.divider()
     if st.button("➕ Adicionar ao relatório", key="dist_add"):

@@ -18,6 +18,7 @@ from utils.helpers import (
 )
 from utils.plotting import control_chart
 from utils.interpretation import interpret_control_chart
+from utils.glossary import GLOSSARY
 
 D2_N2 = 1.128  # constante d2 para amplitude móvel de tamanho 2
 
@@ -70,10 +71,11 @@ def render(state) -> None:
     fig = control_chart(series, center, ucl, lcl, x=x.reset_index(drop=True))
 
     m = st.columns(4)
-    m[0].metric("Média (LC)", f"{center:.4g}")
-    m[1].metric("LSC (+3σ)", f"{ucl:.4g}")
-    m[2].metric("LIC (−3σ)", f"{lcl:.4g}")
-    m[3].metric("Pontos fora", n_out)
+    m[0].metric("Média (LC)", f"{center:.4g}", help=GLOSSARY["cep"])
+    m[1].metric("LSC (+3σ)", f"{ucl:.4g}", help=GLOSSARY["limites_controle"])
+    m[2].metric("LIC (−3σ)", f"{lcl:.4g}", help=GLOSSARY["limites_controle"])
+    m[3].metric("Pontos fora", n_out,
+                help="Pontos fora dos limites de controle — possíveis causas especiais.")
 
     st.plotly_chart(fig, use_container_width=True, key="cep_chart")
 
