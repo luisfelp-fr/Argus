@@ -874,6 +874,89 @@ def estimate_step_minutes(dt: pd.Series) -> float:
     return float(np.median(diffs)) / 60.0 if len(diffs) else 1.0
 
 
+def _window_feature_record(
+    gdf: pd.DataFrame, ind_cols: list, limits: dict, step_min: float,
+    n_expected: int, osc_k: float = 3.0, use_turnos: bool = False,
+) -> dict:
+    """Calcula o dicionário de atributos de UMA janela (um dia ou um período).
+
+    ``gdf`` é o recorte da base de processo na janela (deve conter ``__dt__`` para
+    os turnos). Reutilizado por ``build_daily_features`` (dia) e
+    ``build_period_features`` (período sazonal)."""
+    rec: dict = {}
+    for c in ind_cols:
+        base = _clean_token(c)
+        arr = gdf[c].dropna().to_numpy(dtype=float)
+        n_valid = arr.size
+        rec[f"{base}_n_valid"] = n_valid
+        rec[f"{base}_pct_missing"] = max(0.0, 1 - n_valid / n_expected) * 100.0
+        if n_valid == 0:
+            for suf in _DAILY_SUFFIXES:
+                rec[f"{base}_{suf}"] = np.nan
+        else:
+            mean = float(np.mean(arr))
+            std = float(np.std(arr, ddof=1)) if n_valid > 1 else 0.0
+            mn, mx = float(np.min(arr)), float(np.max(arr))
+            rec[f"{base}_mean"] = mean
+            rec[f"{base}_median"] = float(np.median(arr))
+            rec[f"{base}_min"] = mn
+            rec[f"{base}_max"] = mx
+            rec[f"{base}_range"] = mx - mn
+            rec[f"{base}_std"] = std
+            rec[f"{base}_cv"] = std / abs(mean) if mean != 0 else np.nan
+            rec[f"{base}_p10"] = float(np.percentile(arr, 10))
+            rec[f"{base}_p25"] = float(np.percentile(arr, 25))
+            rec[f"{base}_p75"] = float(np.percentile(arr, 75))
+            rec[f"{base}_p90"] = float(np.percentile(arr, 90))
+            rec[f"{base}_sum"] = float(np.sum(arr))
+            diff = np.diff(arr)
+            if diff.size:
+                rec[f"{base}_mean_abs_diff"] = float(np.mean(np.abs(diff)))
+                rec[f"{base}_max_rate"] = float(np.max(np.abs(diff)))
+                sdiff = float(np.std(diff, ddof=1)) if diff.size > 1 else 0.0
+                thr = osc_k * sdiff
+                rec[f"{base}_n_oscilacoes"] = (
+                    int(np.sum(np.abs(diff) > thr)) if thr > 0 else 0
+                )
+            else:
+                rec[f"{base}_mean_abs_diff"] = 0.0
+                rec[f"{base}_max_rate"] = 0.0
+                rec[f"{base}_n_oscilacoes"] = 0
+
+        # Tempo fora de faixa (apenas indicadores com limite configurado)
+        if c in limits and n_valid > 0:
+            lo, hi = limits[c]
+            has_lo = lo is not None and not (isinstance(lo, float) and np.isnan(lo))
+            has_hi = hi is not None and not (isinstance(hi, float) and np.isnan(hi))
+            out_mask = np.zeros(arr.shape, dtype=bool)
+            if has_lo:
+                below = arr < lo
+                out_mask |= below
+                rec[f"{base}_min_abaixo"] = float(np.sum(below) * step_min)
+                rec[f"{base}_area_abaixo"] = float(np.sum((lo - arr)[below]))
+            if has_hi:
+                above = arr > hi
+                out_mask |= above
+                rec[f"{base}_min_acima"] = float(np.sum(above) * step_min)
+                rec[f"{base}_area_acima"] = float(np.sum((arr - hi)[above]))
+            rec[f"{base}_pct_fora"] = float(np.sum(out_mask) / n_valid * 100.0)
+
+    # Turnos (00–08, 08–16, 16–24) — relevante sobretudo para período diário
+    if use_turnos:
+        hours = gdf["__dt__"].dt.hour
+        for tname, lh, hh in [("t1", 0, 8), ("t2", 8, 16), ("t3", 16, 24)]:
+            sub = gdf.loc[(hours >= lh) & (hours < hh)]
+            for c in ind_cols:
+                base = _clean_token(c)
+                xs = sub[c].dropna().to_numpy(dtype=float)
+                rec[f"{base}_mean_{tname}"] = float(np.mean(xs)) if xs.size else np.nan
+                rec[f"{base}_std_{tname}"] = (
+                    float(np.std(xs, ddof=1)) if xs.size > 1
+                    else (0.0 if xs.size == 1 else np.nan)
+                )
+    return rec
+
+
 def build_daily_features(
     proc_df: pd.DataFrame,
     dt_col: str,
@@ -917,76 +1000,8 @@ def build_daily_features(
     records: list[dict] = []
     for date, gdf in df.groupby("__date__"):
         rec: dict = {"data": date}
-        for c in ind_cols:
-            base = _clean_token(c)
-            arr = gdf[c].dropna().to_numpy(dtype=float)
-            n_valid = arr.size
-            rec[f"{base}_n_valid"] = n_valid
-            rec[f"{base}_pct_missing"] = max(0.0, 1 - n_valid / n_expected) * 100.0
-            if n_valid == 0:
-                for suf in _DAILY_SUFFIXES:
-                    rec[f"{base}_{suf}"] = np.nan
-            else:
-                mean = float(np.mean(arr))
-                std = float(np.std(arr, ddof=1)) if n_valid > 1 else 0.0
-                mn, mx = float(np.min(arr)), float(np.max(arr))
-                rec[f"{base}_mean"] = mean
-                rec[f"{base}_median"] = float(np.median(arr))
-                rec[f"{base}_min"] = mn
-                rec[f"{base}_max"] = mx
-                rec[f"{base}_range"] = mx - mn
-                rec[f"{base}_std"] = std
-                rec[f"{base}_cv"] = std / abs(mean) if mean != 0 else np.nan
-                rec[f"{base}_p10"] = float(np.percentile(arr, 10))
-                rec[f"{base}_p25"] = float(np.percentile(arr, 25))
-                rec[f"{base}_p75"] = float(np.percentile(arr, 75))
-                rec[f"{base}_p90"] = float(np.percentile(arr, 90))
-                rec[f"{base}_sum"] = float(np.sum(arr))
-                diff = np.diff(arr)
-                if diff.size:
-                    rec[f"{base}_mean_abs_diff"] = float(np.mean(np.abs(diff)))
-                    rec[f"{base}_max_rate"] = float(np.max(np.abs(diff)))
-                    sdiff = float(np.std(diff, ddof=1)) if diff.size > 1 else 0.0
-                    thr = osc_k * sdiff
-                    rec[f"{base}_n_oscilacoes"] = (
-                        int(np.sum(np.abs(diff) > thr)) if thr > 0 else 0
-                    )
-                else:
-                    rec[f"{base}_mean_abs_diff"] = 0.0
-                    rec[f"{base}_max_rate"] = 0.0
-                    rec[f"{base}_n_oscilacoes"] = 0
-
-            # Tempo fora de faixa (apenas indicadores com limite configurado)
-            if c in limits and n_valid > 0:
-                lo, hi = limits[c]
-                has_lo = lo is not None and not (isinstance(lo, float) and np.isnan(lo))
-                has_hi = hi is not None and not (isinstance(hi, float) and np.isnan(hi))
-                out_mask = np.zeros(arr.shape, dtype=bool)
-                if has_lo:
-                    below = arr < lo
-                    out_mask |= below
-                    rec[f"{base}_min_abaixo"] = float(np.sum(below) * step_min)
-                    rec[f"{base}_area_abaixo"] = float(np.sum((lo - arr)[below]))
-                if has_hi:
-                    above = arr > hi
-                    out_mask |= above
-                    rec[f"{base}_min_acima"] = float(np.sum(above) * step_min)
-                    rec[f"{base}_area_acima"] = float(np.sum((arr - hi)[above]))
-                rec[f"{base}_pct_fora"] = float(np.sum(out_mask) / n_valid * 100.0)
-
-        # Turnos (00–08, 08–16, 16–24)
-        if use_turnos:
-            hours = gdf["__dt__"].dt.hour
-            for tname, lh, hh in [("t1", 0, 8), ("t2", 8, 16), ("t3", 16, 24)]:
-                sub = gdf.loc[(hours >= lh) & (hours < hh)]
-                for c in ind_cols:
-                    base = _clean_token(c)
-                    xs = sub[c].dropna().to_numpy(dtype=float)
-                    rec[f"{base}_mean_{tname}"] = float(np.mean(xs)) if xs.size else np.nan
-                    rec[f"{base}_std_{tname}"] = (
-                        float(np.std(xs, ddof=1)) if xs.size > 1
-                        else (0.0 if xs.size == 1 else np.nan)
-                    )
+        rec.update(_window_feature_record(
+            gdf, ind_cols, limits, step_min, n_expected, osc_k, use_turnos))
         records.append(rec)
 
     daily = pd.DataFrame(records).set_index("data").sort_index()
@@ -1012,6 +1027,116 @@ def add_lag_features(daily_df: pd.DataFrame, max_lag_days: int) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------- #
+# A.3b  ANÁLISE SAZONAL — período definido pelos horários do indicador sazonal
+#       (cadência diária OU sub-diária) e lag configurado em MINUTOS.
+# --------------------------------------------------------------------------- #
+def parse_target_series(
+    prod_df: pd.DataFrame, date_col: str, target_col: str
+) -> tuple[pd.Series, float]:
+    """Lê o indicador sazonal como série temporal e detecta o período (em minutos).
+
+    Retorna ``(serie, period_min)`` onde ``serie`` é indexada pelos instantes do
+    indicador (âncoras de período) e ``period_min`` é a mediana do espaçamento
+    entre leituras consecutivas (24 h → 1440 min; a cada 4 h → 240 min; etc.).
+    """
+    p = prod_df.copy()
+    tdt = pd.to_datetime(p[date_col], dayfirst=True, errors="coerce")
+    val = _coerce_numeric_brl(p[target_col])
+    s = pd.Series(np.asarray(val, dtype=float), index=tdt)
+    s = s[s.index.notna()].dropna()
+    s = s.groupby(level=0).mean().sort_index()
+    if len(s) < 2:
+        raise ValueError("São necessárias ao menos 2 leituras do indicador sazonal.")
+    diffs = np.diff(s.index.values).astype("timedelta64[s]").astype(float)
+    diffs = diffs[diffs > 0]
+    period_min = float(np.median(diffs)) / 60.0 if len(diffs) else 1440.0
+    s.name = "Sazonal"
+    s.index.name = "periodo"
+    return s, period_min
+
+
+def build_period_features(
+    proc_df: pd.DataFrame,
+    dt_col: str,
+    anchors,
+    period_min: float,
+    *,
+    limits: dict | None = None,
+    use_turnos: bool = False,
+    osc_k: float = 3.0,
+) -> tuple[pd.DataFrame, float]:
+    """Agrega o processo minuto a minuto na janela de cada período sazonal.
+
+    Para cada âncora ``T_i`` (instante do indicador sazonal), a janela é
+    ``(T_{i-1}, T_i]`` (a primeira é ``(T_1 − período, T_1]``). Gera os mesmos
+    atributos por indicador de ``build_daily_features``. Indexado pelas âncoras.
+
+    Retorna ``(period_df, step_minutes)``.
+    """
+    limits = limits or {}
+    df = proc_df.copy()
+    dt = pd.to_datetime(df[dt_col], dayfirst=True, errors="coerce")
+    df = df.loc[dt.notna()].copy()
+    df["__dt__"] = dt[dt.notna()].values
+    df = df.sort_values("__dt__").reset_index(drop=True)
+
+    ind_cols = [c for c in proc_df.columns if c != dt_col]
+    for c in ind_cols:
+        df[c] = _coerce_numeric_brl(df[c])
+    ind_cols = [c for c in ind_cols if pd.api.types.is_numeric_dtype(df[c])]
+    if not ind_cols:
+        raise ValueError("Nenhum indicador numérico encontrado na base de processo.")
+
+    step_min = estimate_step_minutes(df["__dt__"])
+    n_expected = max(1, int(round(period_min / step_min)))
+    period = pd.Timedelta(minutes=period_min)
+
+    anchors = pd.DatetimeIndex(pd.to_datetime(anchors)).sort_values()
+    times = df["__dt__"].to_numpy(dtype="datetime64[ns]")
+
+    records, index = [], []
+    for i, T in enumerate(anchors):
+        start = anchors[i - 1] if i > 0 else (T - period)
+        lo = int(np.searchsorted(times, np.datetime64(pd.Timestamp(start)), side="right"))
+        hi = int(np.searchsorted(times, np.datetime64(pd.Timestamp(T)), side="right"))
+        gdf = df.iloc[lo:hi]
+        records.append(_window_feature_record(
+            gdf, ind_cols, limits, step_min, n_expected, osc_k, use_turnos))
+        index.append(T)
+
+    out = pd.DataFrame(records, index=pd.DatetimeIndex(index, name="periodo"))
+    return out, step_min
+
+
+def add_lag_features_min(
+    period_df: pd.DataFrame, max_lag_min: float, period_min: float
+) -> pd.DataFrame:
+    """Cria blocos de defasagem de PERÍODOS anteriores, com o máximo em minutos.
+
+    Nº de blocos = ``floor(max_lag_min / period_min)``. Rótulo ``{col}_lag_{m}min``
+    (``m = k·period_min``); ``lag_0min`` é o período atual.
+    """
+    df = period_df.sort_index()
+    period_min = period_min if period_min and period_min > 0 else 1.0
+    n_lags = int(np.floor(max_lag_min / period_min)) if max_lag_min > 0 else 0
+    frames = []
+    for k in range(0, n_lags + 1):
+        m = int(round(k * period_min))
+        shifted = df.shift(k)
+        shifted.columns = [f"{c}_lag_{m}min" for c in df.columns]
+        frames.append(shifted)
+    return pd.concat(frames, axis=1)
+
+
+def merge_with_target(
+    period_feat: pd.DataFrame, target_series: pd.Series, target: str = "Sazonal"
+) -> pd.DataFrame:
+    """Junta as variáveis por período com o indicador sazonal (alinhado pelas âncoras)."""
+    ts = target_series.rename(target)
+    return period_feat.join(ts, how="inner")
+
+
+# --------------------------------------------------------------------------- #
 # A.4  Junção com a produção diária + limpeza da base de modelagem
 # --------------------------------------------------------------------------- #
 def merge_with_production(
@@ -1033,7 +1158,7 @@ def merge_with_production(
 
 
 def clean_modeling_table(
-    df: pd.DataFrame, *, target: str = "Producao", max_null_frac: float = 0.4
+    df: pd.DataFrame, *, target: str = "Sazonal", max_null_frac: float = 0.4
 ) -> tuple[pd.DataFrame, dict]:
     """Trata a base de modelagem (req. 12).
 
@@ -1075,9 +1200,9 @@ def clean_modeling_table(
 
 
 def split_features_target(
-    df: pd.DataFrame, target: str = "Producao"
+    df: pd.DataFrame, target: str = "Sazonal"
 ) -> tuple[pd.DataFrame, pd.Series]:
-    """Separa a base limpa em ``(X, y)`` mantendo o índice diário."""
+    """Separa a base limpa em ``(X, y)`` mantendo o índice (dia ou período)."""
     y = df[target].astype(float)
     X = df.drop(columns=[target])
     return X, y
@@ -1287,14 +1412,16 @@ def generate_diagnosis(consolidated: pd.DataFrame, model_result: ModelResult | N
 
     top = consolidated.head(3)["Variável"].tolist()
     themes = {t for t in (_theme_of(v) for v in top) if t}
-    lag_terms = [v for v in top if re.search(r"_lag_([1-9]\d*)d", v)]
+    # lag defasado: novo formato em minutos (_lag_<m>min, m>0) ou legado em dias
+    lag_terms = [v for v in top
+                 if re.search(r"_lag_([1-9]\d*)min", v) or re.search(r"_lag_([1-9]\d*)d", v)]
 
     nomes = ", ".join(f"**{v}**" for v in top)
-    txt = f"A produção apresentou maior associação com {nomes}. "
+    txt = f"O indicador sazonal apresentou maior associação com {nomes}. "
 
     if themes:
         txt += (
-            "Os resultados indicam que a variação de produção está mais relacionada à "
+            "Os resultados indicam que a variação está mais relacionada à "
             + " e ao ".join(sorted(themes)) + ". "
         )
     else:
@@ -1305,21 +1432,21 @@ def generate_diagnosis(consolidated: pd.DataFrame, model_result: ModelResult | N
 
     if lag_terms:
         txt += (
-            "Há indícios de **efeito defasado** (indicadores de dias anteriores "
-            "influenciando a produção atual). "
+            "Há indícios de **efeito defasado** (comportamento de períodos anteriores "
+            "influenciando o valor atual). "
         )
 
     if model_result is not None and not np.isnan(model_result.metrics.get("R2", np.nan)):
         txt += (
             f"O modelo {model_result.model_name} explicou cerca de "
-            f"**{max(0.0, model_result.metrics['R2']) * 100:.0f}%** da variação da "
-            "produção no período de teste. "
+            f"**{max(0.0, model_result.metrics['R2']) * 100:.0f}%** da variação do "
+            "indicador sazonal no período de teste. "
         )
 
     txt += (
-        "Recomenda-se investigar estes indicadores no período anterior ao fechamento "
-        "da produção. Estes são **indicadores com maior evidência estatística de "
-        "influência** — prováveis causas, não causalidade comprovada."
+        "Recomenda-se investigar estes indicadores no(s) período(s) anterior(es) ao "
+        "fechamento do indicador sazonal. Estes são **indicadores com maior evidência "
+        "estatística de influência** — prováveis causas, não causalidade comprovada."
     )
     return txt
 

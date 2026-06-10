@@ -287,16 +287,17 @@ def to_excel_bytes(ranking: pd.DataFrame) -> bytes:
 # --------------------------------------------------------------------------- #
 modo = st.radio(
     "Modo de análise",
-    ["🏭 Produção Diária (novo)", "📊 Correlação Clássica (v1)"],
+    ["📈 Análise Sazonal", "📊 Análise de Variáveis Contínuas"],
     horizontal=True,
-    help="Produção Diária: correlaciona indicadores minuto a minuto com a produção "
-         "diária (variáveis diárias, lag em dias, modelo, SHAP). Correlação Clássica: "
-         "análise original entre indicadores minuto a minuto (v1).",
+    help="Análise Sazonal: correlaciona indicadores de processo minuto a minuto com um "
+         "indicador sazonal (diário ou de poucas horas), com lag em minutos, modelo e SHAP. "
+         "Análise de Variáveis Contínuas: análise de correlação entre indicadores minuto a "
+         "minuto, com lag em minutos (modo clássico).",
 )
 
-if modo.startswith("🏭"):
+if modo.startswith("📈"):
     import daily_ui
-    daily_ui.render_daily_mode()
+    daily_ui.render_seasonal_mode()
     st.stop()
 
 st.caption(

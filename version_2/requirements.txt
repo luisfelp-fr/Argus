@@ -1,4 +1,4 @@
-# --- Núcleo: instalação garantida no Streamlit Community Cloud ---
+# --- Núcleo ---
 streamlit>=1.33
 pandas>=2.0
 numpy>=1.24
@@ -7,9 +7,9 @@ scikit-learn>=1.3
 plotly>=5.18
 openpyxl>=3.1
 
-# --- Opcionais (o app funciona sem eles: usa RandomForest + importância do modelo) ---
-# xgboost normalmente instala bem; descomente para habilitar o modelo XGBoost:
-# xgboost>=2.0
-# shap depende de numba/llvmlite e pode falhar no build em Python 3.13.
-# Para usar: no deploy escolha Python 3.12 (Advanced settings) e descomente:
-# shap>=0.44
+# --- Modelos e explicabilidade ---
+# IMPORTANTE: no Streamlit Community Cloud, selecione Python 3.12 em "Advanced
+# settings" no deploy. O shap depende de numba/llvmlite, que podem falhar no build
+# em Python 3.13.
+xgboost>=2.0
+shap>=0.44
