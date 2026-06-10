@@ -6,6 +6,7 @@ venv/
 
 # Artefatos gerados
 sample_data.xlsx
+sample_producao.xlsx
 *.log
 
 # Configs locais do editor/Claude
