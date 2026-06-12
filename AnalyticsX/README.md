@@ -1,4 +1,4 @@
-# Análise de Processo — Correlação & Produção (Versão 2)
+# Argus AnalyticsX - Análise Avançada de Processo
 
 App em Streamlit com **dois modos**, selecionados no topo da página:
 

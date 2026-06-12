@@ -17,9 +17,9 @@ import streamlit as st
 
 import analysis
 
-st.set_page_config(page_title="Análise de Processo — Correlação & Produção", layout="wide")
+st.set_page_config(page_title="Argus AnalyticsX - Análise Avançada de Processo", layout="wide")
 
-st.title("📊 Análise de Processo — Correlação & Produção")
+st.title("📊 Argus AnalyticsX - Análise Avançada de Processo")
 
 # Permite que nomes longos de indicadores quebrem linha nos KPIs (st.metric)
 # em vez de serem cortados com reticências.
