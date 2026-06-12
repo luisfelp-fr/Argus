@@ -9,6 +9,7 @@ Rodar:  streamlit run app.py
 """
 
 import io
+import os
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,16 @@ import streamlit as st
 import analysis
 import auth
 
-st.set_page_config(page_title="Argus AnalyticsX - Análise Avançada de Processo", layout="wide")
+# Ícone do app (olho verde — tema Argus). Cai para emoji se a imagem faltar.
+_ICON_PATH = os.path.join(os.path.dirname(__file__), "assets", "eye_icon.png")
+try:
+    from PIL import Image
+    _PAGE_ICON = Image.open(_ICON_PATH)
+except Exception:  # noqa: BLE001
+    _PAGE_ICON = "👁️"
+
+st.set_page_config(page_title="Argus AnalyticsX - Análise Avançada de Processo",
+                   page_icon=_PAGE_ICON, layout="wide")
 
 # --- Controle de acesso (login + senha) --------------------------------- #
 # Bloqueia todo o app até a autenticação. Credenciais ficam em st.secrets.
