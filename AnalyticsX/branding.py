@@ -33,8 +33,7 @@ def app_header_html(title: str, subtitle: str = "") -> str:
         "margin:0.1rem 0 0.7rem'>"
         f"{img}"
         "<div>"
-        "<div style='font-size:1.95rem;font-weight:700;line-height:1.1;"
-        "font-family:Georgia,\"Times New Roman\",serif'>"
+        "<div style='font-size:1.95rem;font-weight:700;line-height:1.1'>"
         f"{title}</div>{sub}</div>"
         "</div>"
     )
@@ -49,7 +48,7 @@ def login_header_html() -> str:
     return (
         "<div style='text-align:center'>"
         f"{img}"
-        "<h1 style='margin:.45rem 0 0;font-family:Georgia,serif;color:#0E2A47'>"
+        "<h1 style='margin:.45rem 0 0;color:#0E2A47'>"
         "Argus AnalyticsX</h1>"
         "<p style='color:#5C7185;margin-top:4px'>Análise Avançada de Processo</p>"
         "</div>"
