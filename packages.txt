@@ -1,1 +1,3 @@
 chromium
+libcairo2-dev
+pkg-config
