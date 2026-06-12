@@ -118,7 +118,8 @@ shap_imp = analysis.shap_importance(model, X)
 consolidated = analysis.consolidated_ranking(stat, model.importances, shap_imp)
 texto = analysis.generate_report_text(
     consolidated, model, stat, excursion_tbl=exc_tbl,
-    period_min=period_min, n_periodos=len(clean))
+    period_min=period_min, n_periodos=len(clean),
+    sheet_names=["Moenda", "Fermentacao", "Lab_Caldo"])
 print(f"\nR2 do modelo (teste): {model.metrics['R2']:.3f}")
 print("\n== Texto do relatorio ==")
 print(texto)

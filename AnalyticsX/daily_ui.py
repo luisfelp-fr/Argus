@@ -129,13 +129,43 @@ def render_seasonal_mode() -> None:
     with st.expander("ℹ️ Glossário — entenda cada modelo e análise"):
         st.markdown(glossario_markdown())
 
-    (tab_cfg, tab_base, tab_stat, tab_limits, tab_model, tab_rank, tab_day,
-     tab_report, tab_export) = st.tabs([
-        "📥 Dados & Configuração", "🧱 Base por Período", "📊 Estatística",
-        "🚦 Limites & Excursões", "🤖 Modelo & Explicabilidade",
+    (tab_cfg, tab_base, tab_legend, tab_stat, tab_limits, tab_model, tab_rank,
+     tab_day, tab_report, tab_export) = st.tabs([
+        "📥 Dados & Configuração", "🧱 Base por Período", "📖 Legenda",
+        "📊 Estatística", "🚦 Limites & Excursões", "🤖 Modelo & Explicabilidade",
         "🏆 Ranking Consolidado", "📅 Diagnóstico do Período",
         "📄 Relatório", "⬇️ Exportar",
     ])
+
+    # ===================================================================== #
+    # ABA — Legenda das variáveis (estática: disponível antes de processar)
+    # ===================================================================== #
+    with tab_legend:
+        st.subheader("📖 Legenda dos nomes de variáveis",
+                     help="Cada coluna da base por período é gerada automaticamente "
+                          "a partir dos indicadores brutos. Esta aba explica como "
+                          "ler o nome e o que cada sufixo significa.")
+        st.markdown(
+            "Os nomes seguem o padrão **`[Aba_]Indicador_sufixo_lag_Xmin`**:\n\n"
+            "- **Aba** — nome da aba de origem (aparece só quando há mais de uma "
+            "aba de variáveis contínuas, ex.: `Moenda_`);\n"
+            "- **Indicador** — o nome da coluna na sua planilha (ex.: `Temperatura`);\n"
+            "- **Sufixo** — a estatística calculada na janela do período (tabela abaixo);\n"
+            "- **`_lag_Xmin`** — defasagem: `lag_0min` é o período atual do alvo; "
+            "`lag_480min` é o valor da variável **480 minutos antes** (efeito "
+            "defasado). Para laboratório, o passo do lag é o intervalo entre análises.\n\n"
+            "**Exemplo:** `Moenda_Temperatura_mean_abs_diff_lag_0min` = *variação "
+            "média entre leituras da Temperatura (aba Moenda), no período atual* — "
+            "mede o quanto o sinal 'treme'; se aparece no topo do ranking com "
+            "correlação negativa, a instabilidade da temperatura está derrubando o alvo."
+        )
+        legend_df = analysis.suffix_legend_table()
+        for cat in legend_df["Categoria"].unique():
+            sub = legend_df[legend_df["Categoria"] == cat].drop(columns="Categoria")
+            st.markdown(f"**{cat}**")
+            st.dataframe(sub, use_container_width=True, hide_index=True)
+        _attach_button("legenda_sufixos", "table", "Legenda dos sufixos das variáveis",
+                       legend_df, "Legenda")
 
     # ===================================================================== #
     # ABA 1 — Dados & Configuração
@@ -529,11 +559,14 @@ def render_seasonal_mode() -> None:
 
                     importances = model_result.importances if model_result else None
                     consolidated = analysis.consolidated_ranking(stat, importances, shap_imp)
-                    diag = analysis.generate_diagnosis(consolidated, model_result)
+                    all_sheet_names = ([sh["name"] for sh in cont_sheets]
+                                       + [sh["name"] for sh in lab_sheets])
+                    diag = analysis.generate_diagnosis(consolidated, model_result,
+                                                       sheet_names=all_sheet_names)
                     report_text = analysis.generate_report_text(
                         consolidated, model_result, stat,
                         excursion_tbl=exc_target, period_min=float(period_min),
-                        n_periodos=len(clean),
+                        n_periodos=len(clean), sheet_names=all_sheet_names,
                     )
 
                 st.session_state["v2_results"] = {

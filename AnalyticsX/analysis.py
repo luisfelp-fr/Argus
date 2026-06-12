@@ -1405,7 +1405,8 @@ def _theme_of(name: str) -> str | None:
     return None
 
 
-def generate_diagnosis(consolidated: pd.DataFrame, model_result: ModelResult | None) -> str:
+def generate_diagnosis(consolidated: pd.DataFrame, model_result: ModelResult | None,
+                       sheet_names: list[str] | None = None) -> str:
     """Gera um diagnóstico em linguagem gerencial (req. 17)."""
     if consolidated is None or consolidated.empty:
         return "Não há evidência estatística suficiente para um diagnóstico."
@@ -1416,7 +1417,7 @@ def generate_diagnosis(consolidated: pd.DataFrame, model_result: ModelResult | N
     lag_terms = [v for v in top
                  if re.search(r"_lag_([1-9]\d*)min", v) or re.search(r"_lag_([1-9]\d*)d", v)]
 
-    nomes = ", ".join(f"**{v}**" for v in top)
+    nomes = ", ".join(f"**{humanize_variable(v, sheet_names)}**" for v in top)
     txt = f"O indicador sazonal apresentou maior associação com {nomes}. "
 
     if themes:
@@ -1906,7 +1907,209 @@ def excursion_vs_target(merged: pd.DataFrame, target: str = "Sazonal") -> pd.Dat
 
 
 # --------------------------------------------------------------------------- #
-# B.5  Texto do relatório final (por que estas variáveis são as principais)
+# B.5  Legenda dos sufixos e nomes legíveis de variáveis
+# --------------------------------------------------------------------------- #
+# Cada entrada: (rótulo curto p/ frases, categoria, o que mede, como interpretar)
+SUFFIX_INFO: dict[str, tuple[str, str, str, str]] = {
+    # --- estatísticas básicas da janela --------------------------------- #
+    "mean": ("média", "Estatística básica",
+             "Valor médio do indicador na janela do período.",
+             "Mostra o patamar de operação. Se aparece no topo do ranking, o NÍVEL "
+             "do indicador influencia o alvo (suba/desça o setpoint conforme o sentido)."),
+    "median": ("mediana", "Estatística básica",
+               "Valor central da janela (50% das leituras abaixo, 50% acima).",
+               "Como a média, porém imune a picos isolados — bom para indicadores com outliers."),
+    "min": ("mínimo", "Estatística básica",
+            "Menor leitura registrada na janela.",
+            "Captura mergulhos pontuais; relevante quando quedas momentâneas prejudicam o processo."),
+    "max": ("máximo", "Estatística básica",
+            "Maior leitura registrada na janela.",
+            "Captura picos pontuais; relevante quando estouros momentâneos prejudicam o processo."),
+    "range": ("amplitude", "Instabilidade",
+              "Diferença entre o máximo e o mínimo da janela.",
+              "Amplitude alta = janela com grande variação; associação com o alvo indica "
+              "que oscilações amplas impactam o resultado."),
+    "std": ("desvio padrão", "Instabilidade",
+            "Dispersão das leituras em torno da média na janela.",
+            "Mede a INSTABILIDADE. Correlação (geralmente negativa) com o alvo indica que "
+            "operar de forma instável prejudica o resultado — estabilize o controle."),
+    "cv": ("coeficiente de variação", "Instabilidade",
+           "Desvio padrão dividido pela média (instabilidade relativa, em fração).",
+           "Como o desvio padrão, mas comparável entre indicadores de escalas diferentes."),
+    "p10": ("10º percentil", "Estatística básica",
+            "Valor abaixo do qual ficam 10% das leituras da janela.",
+            "Representa os 'vales típicos' do período (mínimos sustentados, sem o ruído "
+            "de um único pico). Útil quando operar baixo demais prejudica."),
+    "p25": ("25º percentil", "Estatística básica",
+            "Valor abaixo do qual ficam 25% das leituras da janela.",
+            "Parte baixa da operação típica do período."),
+    "p75": ("75º percentil", "Estatística básica",
+            "Valor abaixo do qual ficam 75% das leituras da janela.",
+            "Parte alta da operação típica do período."),
+    "p90": ("90º percentil", "Estatística básica",
+            "Valor abaixo do qual ficam 90% das leituras da janela.",
+            "Representa os 'picos típicos' do período (máximos sustentados)."),
+    "sum": ("soma", "Estatística básica",
+            "Soma de todas as leituras da janela.",
+            "Em vazões/contagens equivale ao volume/total do período; segue a média quando "
+            "o nº de leituras é constante."),
+    "mean_abs_diff": ("variação média entre leituras", "Instabilidade",
+                      "Média do |Δ| entre leituras consecutivas (o quanto o sinal 'treme').",
+                      "Alto = sinal serrilhado/ruidoso ou com manobras frequentes. Associação "
+                      "com o alvo indica que o vai-e-vem do controle impacta o resultado."),
+    "max_rate": ("variação máxima instantânea", "Instabilidade",
+                 "Maior |Δ| entre duas leituras consecutivas na janela.",
+                 "Captura degraus/transientes bruscos (partidas, paradas, manobras)."),
+    "n_oscilacoes": ("nº de oscilações bruscas", "Instabilidade",
+                     "Quantidade de variações maiores que 3 desvios padrão do Δ típico.",
+                     "Conta eventos de salto anormal; alto = controle oscilando ou distúrbios repetidos."),
+    "n_valid": ("nº de leituras válidas", "Qualidade do dado",
+                "Quantidade de leituras não vazias na janela.",
+                "Baixo = falha de medição/comunicação no período; os demais atributos ficam menos confiáveis."),
+    "pct_missing": ("% de leituras ausentes", "Qualidade do dado",
+                    "Percentual de leituras esperadas que não chegaram na janela.",
+                    "Alto = sensor/coletor com falha; avalie antes de confiar no período."),
+    # --- limites críticos ------------------------------------------------ #
+    "min_abaixo": ("minutos abaixo do limite", "Limites críticos",
+                   "Tempo (min) que o indicador ficou ABAIXO do limite mínimo definido.",
+                   "Quanto maior, mais tempo fora da condição segura; associação com o alvo "
+                   "quantifica o prejuízo de operar abaixo do limite."),
+    "area_abaixo": ("severidade abaixo do limite", "Limites críticos",
+                    "Soma de (desvio abaixo do limite × tempo) — combina intensidade e duração.",
+                    "Diferencia 'passou de raspão' de 'ficou muito abaixo por muito tempo'."),
+    "min_acima": ("minutos acima do limite", "Limites críticos",
+                  "Tempo (min) que o indicador ficou ACIMA do limite máximo definido.",
+                  "Quanto maior, mais tempo fora da condição segura, no lado de cima."),
+    "area_acima": ("severidade acima do limite", "Limites críticos",
+                   "Soma de (desvio acima do limite × tempo).",
+                   "Severidade combinada das violações pelo lado de cima."),
+    "pct_fora": ("% do tempo fora da faixa", "Limites críticos",
+                 "Percentual do período em que o indicador violou os limites (abaixo ou acima).",
+                 "Resumo direto da disciplina operacional; compare períodos com e sem violação "
+                 "na aba 🚦 (teste de Mann-Whitney)."),
+    # --- laboratório ------------------------------------------------------ #
+    "lab_mean": ("média da análise de laboratório", "Laboratório",
+                 "Média ponderada pelo tempo das análises vigentes na janela — cada valor "
+                 "divulgado em T vale para a janela (T−x, T].",
+                 "Nível médio da qualidade medida em laboratório durante o período do alvo."),
+    "lab_last": ("última análise de laboratório", "Laboratório",
+                 "Valor da última divulgação de laboratório dentro da janela.",
+                 "Condição mais recente conhecida ao fechar o período; com lag, representa a "
+                 "análise de períodos anteriores (efeito defasado da qualidade)."),
+    "lab_n": ("nº de análises de laboratório", "Laboratório",
+              "Quantidade de divulgações de laboratório dentro da janela.",
+              "Baixo = período com pouca cobertura analítica (resultado menos confiável)."),
+    "lab_pct_fora": ("% do tempo da análise fora da faixa", "Laboratório + Limites",
+                     "Percentual do período em que a análise de laboratório vigente violou os limites.",
+                     "Violations de qualidade; compare com o alvo na aba 🚦."),
+    "lab_min_abaixo": ("minutos da análise abaixo do limite", "Laboratório + Limites",
+                       "Tempo (min) com a análise vigente abaixo do limite mínimo.",
+                       "Tempo de operação com qualidade abaixo do especificado."),
+    "lab_min_acima": ("minutos da análise acima do limite", "Laboratório + Limites",
+                      "Tempo (min) com a análise vigente acima do limite máximo.",
+                      "Tempo de operação com qualidade acima do especificado."),
+    "lab_area_abaixo": ("severidade da análise abaixo do limite", "Laboratório + Limites",
+                        "Desvio abaixo do limite × tempo, para a análise vigente.",
+                        "Severidade combinada (intensidade × duração) da violação de qualidade."),
+    "lab_area_acima": ("severidade da análise acima do limite", "Laboratório + Limites",
+                       "Desvio acima do limite × tempo, para a análise vigente.",
+                       "Severidade combinada da violação de qualidade pelo lado de cima."),
+    # --- turnos ----------------------------------------------------------- #
+    "mean_t1": ("média no turno 00–08", "Turnos",
+                "Média do indicador apenas no turno 00h–08h.",
+                "Permite isolar diferenças entre turnos (equipe, carga, matéria-prima)."),
+    "mean_t2": ("média no turno 08–16", "Turnos",
+                "Média do indicador apenas no turno 08h–16h.",
+                "Permite isolar diferenças entre turnos."),
+    "mean_t3": ("média no turno 16–24", "Turnos",
+                "Média do indicador apenas no turno 16h–24h.",
+                "Permite isolar diferenças entre turnos."),
+    "std_t1": ("desvio padrão no turno 00–08", "Turnos",
+               "Instabilidade do indicador apenas no turno 00h–08h.",
+               "Instabilidade por turno — aponta o turno que mais oscila."),
+    "std_t2": ("desvio padrão no turno 08–16", "Turnos",
+               "Instabilidade do indicador apenas no turno 08h–16h.",
+               "Instabilidade por turno."),
+    "std_t3": ("desvio padrão no turno 16–24", "Turnos",
+               "Instabilidade do indicador apenas no turno 16h–24h.",
+               "Instabilidade por turno."),
+}
+
+# sufixos ordenados do mais longo para o mais curto (match correto de
+# "mean_abs_diff" antes de "mean", "lab_mean" antes de "mean", etc.)
+_SUFFIXES_BY_LEN = sorted(SUFFIX_INFO, key=len, reverse=True)
+
+
+def suffix_legend_table() -> pd.DataFrame:
+    """Tabela-legenda dos sufixos para exibição na UI e no relatório."""
+    rows = [
+        {"Categoria": cat, "Sufixo": f"_{suf}", "Nome": rotulo.capitalize(),
+         "O que mede": mede, "Como interpretar / impacto": impacto}
+        for suf, (rotulo, cat, mede, impacto) in SUFFIX_INFO.items()
+    ]
+    order = ["Estatística básica", "Instabilidade", "Limites críticos",
+             "Laboratório", "Laboratório + Limites", "Turnos", "Qualidade do dado"]
+    df = pd.DataFrame(rows)
+    df["__o__"] = df["Categoria"].map({c: i for i, c in enumerate(order)}).fillna(99)
+    return df.sort_values(["__o__", "Sufixo"]).drop(columns="__o__").reset_index(drop=True)
+
+
+def humanize_variable(name: str, sheet_names: list[str] | None = None) -> str:
+    """Converte um nome técnico em frase legível.
+
+    Ex.: ``Moenda_Vazao_p10_lag_0min`` → ``10º percentil de Vazao (Moenda), sem lag``.
+    ``sheet_names`` (nomes das abas usadas como prefixo) permite separar a aba do
+    indicador; sem ela, o prefixo permanece junto ao nome do indicador.
+    """
+    base = str(name)
+
+    # 1) defasagem
+    lag_txt = ""
+    m = re.search(r"_lag_(\d+)min$", base)
+    if m:
+        mins = int(m.group(1))
+        base = base[: m.start()]
+        if mins == 0:
+            lag_txt = ", sem lag"
+        elif mins % 60 == 0:
+            h = mins // 60
+            lag_txt = f", com lag de {mins} min ({h:g} h antes)"
+        else:
+            lag_txt = f", com lag de {mins} min"
+    else:
+        d = re.search(r"_lag_(\d+)d$", base)
+        if d:
+            dias = int(d.group(1))
+            base = base[: d.start()]
+            lag_txt = ", sem lag (mesmo dia)" if dias == 0 else (
+                f", com lag de {dias} dia" + ("s" if dias > 1 else ""))
+
+    # 2) sufixo estatístico
+    rotulo = None
+    for suf in _SUFFIXES_BY_LEN:
+        if base.endswith(f"_{suf}"):
+            rotulo = SUFFIX_INFO[suf][0]
+            base = base[: -(len(suf) + 1)]
+            break
+
+    # 3) prefixo de aba (quando os nomes das abas são conhecidos)
+    aba_txt = ""
+    if sheet_names:
+        for sh in sorted(sheet_names, key=len, reverse=True):
+            tok = _clean_token(sh)
+            if base.startswith(f"{tok}_"):
+                base = base[len(tok) + 1:]
+                aba_txt = f" ({sh})"
+                break
+
+    indicador = base.replace("_", " ").strip() or name
+    if rotulo:
+        return f"{rotulo} de {indicador}{aba_txt}{lag_txt}"
+    return f"{indicador}{aba_txt}{lag_txt}"
+
+
+# --------------------------------------------------------------------------- #
+# B.6  Texto do relatório final (por que estas variáveis são as principais)
 # --------------------------------------------------------------------------- #
 def _fmt_lag_legivel(name: str) -> str | None:
     m = re.search(r"_lag_(\d+)min", name)
@@ -1930,11 +2133,14 @@ def generate_report_text(
     period_min: float | None = None,
     n_periodos: int | None = None,
     top_n: int = 5,
+    sheet_names: list[str] | None = None,
 ) -> str:
     """Texto (markdown) do relatório final: por que cada variável entrou no topo.
 
     Combina o ranking consolidado, as estatísticas (Spearman/p-value/MI), o
-    desempenho do modelo e as análises de excursão num texto gerencial.
+    desempenho do modelo e as análises de excursão num texto gerencial. Os nomes
+    técnicos das variáveis são convertidos em frases legíveis (o código original
+    aparece entre parênteses para cruzamento com as tabelas).
     """
     if consolidated is None or consolidated.empty:
         return "Não há evidência estatística suficiente para um relatório."
@@ -1982,9 +2188,11 @@ def generate_report_text(
             motivos.append(f"efeito **defasado**: o comportamento de {lag_txt} "
                            "influencia o período atual")
         score = row.get("Score consolidado")
-        linha = f"**{rank}. {var}**"
+        hum = humanize_variable(var, sheet_names)
+        linha = f"**{rank}. {hum[:1].upper() + hum[1:]}**"
         if pd.notna(score):
             linha += f" (score {score:.3f})"
+        linha += f" [`{var}`]"
         linha += " — " + ("; ".join(motivos) if motivos else
                           "evidência combinada das fontes estatísticas e do modelo") + "."
         linhas.append(linha)
@@ -1999,10 +2207,11 @@ def generate_report_text(
                 delta = r.get("Δ mediana")
                 delta_txt = (f" (mediana do alvo muda {delta:+.2f} nos períodos com violação)"
                              if pd.notna(delta) else "")
+                hum = humanize_variable(r["Variável"], sheet_names)
                 linhas.append(
-                    f"- **{r['Variável']}**: períodos com violação do limite apresentam "
-                    f"alvo significativamente diferente (Mann-Whitney p = "
-                    f"{r['Mann-Whitney p']:.3f}){delta_txt}."
+                    f"- **{hum[:1].upper() + hum[1:]}**: "
+                    f"períodos com violação do limite apresentam alvo significativamente "
+                    f"diferente (Mann-Whitney p = {r['Mann-Whitney p']:.3f}){delta_txt}."
                 )
             linhas.append("")
 
