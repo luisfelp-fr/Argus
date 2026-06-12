@@ -35,6 +35,8 @@ import hmac
 
 import streamlit as st
 
+import branding
+
 SESSION_KEY = "auth_user"
 
 
@@ -89,13 +91,7 @@ def _render_login() -> None:
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
         st.markdown("<div style='height:8vh'></div>", unsafe_allow_html=True)
-        st.markdown(
-            "<h1 style='text-align:center;color:#0E2A47;margin-bottom:0'>"
-            "📊 Argus AnalyticsX</h1>"
-            "<p style='text-align:center;color:#5C7185;margin-top:4px'>"
-            "Análise Avançada de Processo</p>",
-            unsafe_allow_html=True,
-        )
+        st.markdown(branding.login_header_html(), unsafe_allow_html=True)
         with st.form("login_form", clear_on_submit=False):
             st.subheader("Entrar")
             username = st.text_input("Usuário", key="login_user")

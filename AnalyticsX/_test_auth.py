@@ -62,12 +62,17 @@ assert "APP LIBERADO" in [t.value for t in at.title], "deveria liberar"
 assert at.session_state[auth.SESSION_KEY] == USER
 print("[OK] libera com senha correta")
 
-# 4) App sem segredos configurados: mostra ajuda de setup, nao libera
-at2 = AppTest.from_string(SCRIPT, default_timeout=30)
-at2.run()
-assert "APP LIBERADO" not in [t.value for t in at2.title]
-assert any("não configurado" in e.value or "configurado" in e.value
-           for e in at2.error), "esperava aviso de setup"
-print("[OK] sem segredos -> mostra instrucoes de configuracao")
+# 4) App sem segredos configurados: mostra ajuda de setup, nao libera.
+#    (pulado quando ha um .streamlit/secrets.toml local — o AppTest o carrega)
+import os
+if os.path.exists(os.path.join(".streamlit", "secrets.toml")):
+    print("[SKIP] cenario 'sem segredos' (existe .streamlit/secrets.toml local)")
+else:
+    at2 = AppTest.from_string(SCRIPT, default_timeout=30)
+    at2.run()
+    assert "APP LIBERADO" not in [t.value for t in at2.title]
+    assert any("não configurado" in e.value or "configurado" in e.value
+               for e in at2.error), "esperava aviso de setup"
+    print("[OK] sem segredos -> mostra instrucoes de configuracao")
 
 print("TUDO OK")

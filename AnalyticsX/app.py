@@ -18,6 +18,7 @@ import streamlit as st
 
 import analysis
 import auth
+import branding
 
 # Ícone do app (olho verde — tema Argus). Cai para emoji se a imagem faltar.
 _ICON_PATH = os.path.join(os.path.dirname(__file__), "assets", "eye_icon.png")
@@ -35,7 +36,10 @@ st.set_page_config(page_title="Argus AnalyticsX - Análise Avançada de Processo
 auth.require_login()
 auth.logout_button()   # usuário logado + botão "Sair" na barra lateral
 
-st.title("📊 Argus AnalyticsX - Análise Avançada de Processo")
+st.markdown(
+    branding.app_header_html("Argus AnalyticsX", "Análise Avançada de Processo"),
+    unsafe_allow_html=True,
+)
 
 # Permite que nomes longos de indicadores quebrem linha nos KPIs (st.metric)
 # em vez de serem cortados com reticências.
