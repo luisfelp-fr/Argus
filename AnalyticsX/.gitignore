@@ -1,0 +1,12 @@
+# Segredos do Streamlit (NUNCA versionar credenciais)
+.streamlit/secrets.toml
+
+# Artefatos
+__pycache__/
+*.pyc
+*.xlsx
+!sample_*.xlsx
+_deck/img/
+_pitch/img/
+*.pdf
+!Documentacao_Analise_Correlacao.pdf

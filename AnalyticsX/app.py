@@ -16,8 +16,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import analysis
+import auth
 
 st.set_page_config(page_title="Argus AnalyticsX - Análise Avançada de Processo", layout="wide")
+
+# --- Controle de acesso (login + senha) --------------------------------- #
+# Bloqueia todo o app até a autenticação. Credenciais ficam em st.secrets.
+auth.require_login()
+auth.logout_button()   # usuário logado + botão "Sair" na barra lateral
 
 st.title("📊 Argus AnalyticsX - Análise Avançada de Processo")
 
