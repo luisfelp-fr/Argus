@@ -1,7 +1,21 @@
+# --- Nucleo ---
 streamlit>=1.33
 pandas>=2.0
 numpy>=1.24
 scipy>=1.10
 scikit-learn>=1.3
-plotly>=5.18
+plotly>=6.1
 openpyxl>=3.1
+
+# --- Relatorio final (HTML interativo + PDF) ---
+# kaleido converte os graficos Plotly em PNG para o PDF. A versao 1.x usa um
+# Chrome/Chromium do sistema: no Streamlit Cloud, o packages.txt instala o chromium.
+kaleido>=1.0
+xhtml2pdf>=0.2.16
+
+# --- Modelos e explicabilidade ---
+# IMPORTANTE: no Streamlit Community Cloud, selecione Python 3.12 em "Advanced
+# settings" no deploy. O shap depende de numba/llvmlite, que podem falhar no build
+# em Python 3.13.
+xgboost>=2.0
+shap>=0.44
