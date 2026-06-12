@@ -35,6 +35,10 @@ except Exception:  # noqa: BLE001
 REPORT_KEY = "report_items"
 META_KEY = "report_meta"
 
+# Fuso horário de Brasília (GMT-3, sem horário de verão) — o servidor do
+# Streamlit Cloud roda em UTC, então o carimbo do relatório é convertido.
+_TZ_BRASILIA = _dt.timezone(_dt.timedelta(hours=-3), "BRT")
+
 
 # --------------------------------------------------------------------------- #
 # Estrutura dos itens
@@ -92,7 +96,32 @@ def items_fingerprint(items: list[ReportItem], meta: dict, diagnosis: str) -> st
 # Conversões
 # --------------------------------------------------------------------------- #
 def _fig_to_png_b64(fig: go.Figure, *, scale: float = 2.0) -> str:
-    png = fig.to_image(format="png", scale=scale)  # requer kaleido
+    """Converte a figura em PNG (kaleido) com ajustes de legibilidade p/ o PDF.
+
+    A imagem é reduzida à largura da página no PDF, então: aumenta a fonte,
+    fixa uma largura generosa e ativa automargin para os nomes (longos) das
+    variáveis nos eixos não serem cortados.
+    """
+    pfig = go.Figure(fig)  # cópia — não altera a figura exibida no app
+    height = fig.layout.height or 450
+    pfig.update_layout(
+        width=1280,
+        height=max(int(height), 460),
+        font=dict(size=16),
+        title_font_size=20,
+        margin=dict(l=20, r=30, t=70, b=60),
+        legend=dict(font=dict(size=14)),
+    )
+    pfig.update_xaxes(automargin=True, tickfont=dict(size=14), title_font=dict(size=16))
+    pfig.update_yaxes(automargin=True, tickfont=dict(size=14), title_font=dict(size=16))
+    # barras horizontais com texto embutido (rankings): fonte maior e fora da barra
+    for tr in pfig.data:
+        if tr.type == "bar" and getattr(tr, "orientation", None) == "h":
+            tr.update(textfont=dict(size=13), textposition="outside",
+                      cliponaxis=False)
+        elif tr.type == "heatmap" and getattr(tr, "texttemplate", None):
+            tr.update(textfont=dict(size=12))
+    png = pfig.to_image(format="png", scale=scale)  # requer kaleido
     return base64.b64encode(png).decode()
 
 
@@ -203,7 +232,7 @@ def build_html(items: list[ReportItem], meta: dict, diagnosis_md: str,
     title = meta.get("titulo") or "Relatório de Análise de Causas"
     author = meta.get("autor") or ""
     obs = meta.get("observacoes") or ""
-    date_str = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+    date_str = _dt.datetime.now(_TZ_BRASILIA).strftime("%d/%m/%Y %H:%M") + " (Brasília)"
 
     head_extra = (
         "<script src='https://cdn.plot.ly/plotly-2.32.0.min.js' charset='utf-8'></script>"
