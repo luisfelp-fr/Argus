@@ -1,14 +1,14 @@
 """
-transforms.py — Normalidade e transformações para capabilidade (estilo Minitab)
-==============================================================================
+transforms.py — Normalidade e transformações para capabilidade
+==============================================================
 
 Para análise de capabilidade (Cp/Cpk) os dados devem ser aproximadamente
-normais. Quando não são, o procedimento usual (Minitab) é aplicar uma
-transformação que normalize os dados — e calcular os índices no espaço
-transformado, transformando também os limites de especificação.
+normais. Quando não são, o procedimento usual é aplicar uma transformação que
+normalize os dados — e calcular os índices no espaço transformado, transformando
+também os limites de especificação.
 
 Este módulo fornece:
-  * ``ad_normality``     — teste de Anderson-Darling com p-valor (como o Minitab);
+  * ``ad_normality``     — teste de Anderson-Darling com p-valor;
   * ``evaluate_transforms`` — aplica Box-Cox, Johnson, Log, Raiz, Inverso e
     Yeo-Johnson, e ranqueia pelo p-valor de normalidade após transformar;
   * ``transform_spec``   — transforma os limites de especificação (LIE/LSE)
@@ -32,8 +32,7 @@ from scipy import stats
 def ad_normality(data) -> tuple[float, float]:
     """Anderson-Darling para normalidade. Retorna (estatística A², p-valor).
 
-    O p-valor segue a aproximação clássica (D'Agostino & Stephens), a mesma
-    família de fórmulas usada pelo Minitab.
+    O p-valor segue a aproximação clássica de D'Agostino & Stephens.
     """
     x = np.asarray(data, dtype=float)
     x = x[np.isfinite(x)]
@@ -205,7 +204,7 @@ def _johnson_fit(x: np.ndarray, z: float) -> TransformResult | None:
 
 
 def _t_johnson(x: np.ndarray) -> TransformResult | None:
-    """Busca o melhor ``z`` (como o Minitab) maximizando o p-valor de normalidade."""
+    """Busca o melhor ``z`` maximizando o p-valor de normalidade."""
     if x.size < 20:
         return None
     best, best_p = None, -1.0

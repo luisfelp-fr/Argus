@@ -1,7 +1,7 @@
 # 👁️ Argus Analytics
 
-**Argus Analytics** é um analisador estatístico de dados, moderno e visual,
-inspirado em ferramentas como o Minitab — porém mais intuitivo e amigável.
+**Argus Analytics** é um analisador estatístico de dados moderno, visual e
+intuitivo, feito para a análise estatística do dia a dia.
 Voltado a **engenheiros, técnicos e analistas** com conhecimento iniciante ou
 intermediário em estatística, ele funciona como um **assistente estatístico
 guiado**: você importa uma planilha, escolhe visualmente a análise desejada,
@@ -105,7 +105,7 @@ O Argus foi pensado para quem está aprendendo estatística:
 ## 🎯 Capabilidade com dados não normais
 
 O Cp/Cpk pressupõe dados **normais**. Na tela **🎯 Capabilidade Cp/Cpk**, o Argus
-segue o mesmo fluxo do Minitab:
+segue um fluxo guiado:
 
 1. **Testa a normalidade** dos dados (Anderson-Darling, com p-valor).
 2. Se **não normais**, aplica **todas as transformações** e as ranqueia pela
@@ -114,7 +114,7 @@ segue o mesmo fluxo do Minitab:
 3. **Recomenda a mais viável** (maior p-valor após transformar) e deixa você
    **escolher** qual usar.
 4. Calcula **Cp/Cpk no espaço transformado**, convertendo também os limites de
-   especificação (LIE/LSE) — exatamente como o Minitab.
+   especificação (LIE/LSE) para a mesma escala.
 
 > Ignorar a normalidade pode inflar o Cp/Cpk e fazer um processo incapaz parecer
 > capaz; por isso a transformação é importante.

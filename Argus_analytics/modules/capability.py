@@ -71,11 +71,11 @@ def render(state) -> None:
         return
 
     # ------------------------------------------------------------------ #
-    # 1) Verificação de normalidade (Anderson-Darling, como o Minitab)
+    # 1) Verificação de normalidade (Anderson-Darling)
     # ------------------------------------------------------------------ #
     st.markdown("#### 1) Verificação de normalidade")
     st.caption("A capabilidade Cp/Cpk assume que os dados são **normais**. Se não "
-               "forem, é preciso transformá-los antes (como o Minitab faz).")
+               "forem, é preciso transformá-los antes de calcular os índices.")
     a2, p_norm = ad_normality(data)
     nm = st.columns(3)
     nm[0].metric("Anderson-Darling A²", f"{a2:.3f}" if a2 == a2 else "—",
@@ -100,7 +100,7 @@ def render(state) -> None:
         # -------------------------------------------------------------- #
         # 2) Testar todas as transformações e ranquear por normalidade
         # -------------------------------------------------------------- #
-        st.markdown("#### 2) Transformações para normalizar (estilo Minitab)")
+        st.markdown("#### 2) Transformações para normalizar os dados")
         results = evaluate_transforms(data)
         if not results:
             st.error("Não foi possível ajustar nenhuma transformação a estes dados "
@@ -163,7 +163,7 @@ def render(state) -> None:
     if transformed:
         st.caption(f"Índices calculados sobre os dados transformados por "
                    f"**{transform_name}**, com os limites convertidos para a mesma "
-                   "escala — mesmo procedimento do Minitab para dados não normais.")
+                   "escala — procedimento padrão para capabilidade com dados não normais.")
     elif not is_normal:
         st.caption("⚠️ Calculado sobre os dados **originais não normais** — "
                    "os índices podem ser imprecisos. Prefira uma transformação acima.")
