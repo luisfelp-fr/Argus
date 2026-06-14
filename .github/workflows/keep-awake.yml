@@ -1,0 +1,54 @@
+name: Manter app Streamlit acordado
+
+# Visita o app periodicamente para que o Streamlit Community Cloud não o coloque
+# para dormir por inatividade — e o reativa caso já tenha dormido.
+#
+# PRÉ-REQUISITO (uma vez): defina a URL do app em
+#   Settings > Secrets and variables > Actions > aba "Variables" > New variable
+#   Nome:  STREAMLIT_APP_URL
+#   Valor: https://SEU-APP.streamlit.app
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # a cada 10 minutos (horário UTC)
+  workflow_dispatch: {}        # permite rodar manualmente pela aba Actions
+
+# Evita execuções sobrepostas se uma demorar mais que o intervalo.
+concurrency:
+  group: keep-awake
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  acordar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar Playwright (Chromium)
+        run: |
+          pip install --quiet playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Visitar e acordar o app
+        env:
+          APP_URL: ${{ vars.STREAMLIT_APP_URL }}
+        run: python .github/scripts/keep_awake.py
+
+      - name: Salvar screenshot (depuração)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: status-screenshot
+          path: status.png
+          if-no-files-found: ignore
+          retention-days: 3
