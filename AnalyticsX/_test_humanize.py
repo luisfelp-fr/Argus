@@ -13,7 +13,7 @@ casos = {
     "Brix_per_last_lag_240min":
         "última leitura de Brix, com lag de 240 min (4 h antes)",
     "Fermentacao_pH_area_abaixo_lag_480min":
-        "severidade abaixo do limite de pH (Fermentacao), com lag de 480 min (8 h antes)",
+        "gravidade abaixo do limite de pH (Fermentacao), com lag de 480 min (8 h antes)",
     "Vazao_mean_lag_0min":          # sem prefixo de aba (1 aba só)
         "média de Vazao, sem lag",
     "Fermentacao_pH_pct_fora":      # sem lag (tabela de excursões)

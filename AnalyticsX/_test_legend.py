@@ -18,7 +18,7 @@ assert not at.exception, at.exception
 print("tabelas renderizadas:", len(at.table))
 # textos longos (que antes eram cortados) devem aparecer inteiros
 alvos = ["estabilize o controle",
-         "prováveis causas a investigar" if False else "Severidade combinada da violação"]
+         "passar muito e por muito tempo conta muito mais"]
 joined = " ".join(str(t.value.to_dict()) for t in at.table)
 for a in alvos:
     assert a in joined, f"texto cortado/ausente: {a!r}"

@@ -1976,15 +1976,20 @@ SUFFIX_INFO: dict[str, tuple[str, str, str, str]] = {
                    "Tempo (min) que o indicador ficou ABAIXO do limite mínimo definido.",
                    "Quanto maior, mais tempo fora da condição segura; associação com o alvo "
                    "quantifica o prejuízo de operar abaixo do limite."),
-    "area_abaixo": ("severidade abaixo do limite", "Limites críticos",
-                    "Combina o quanto e por quanto tempo ficou abaixo do limite.",
-                    "Diferencia 'passou de raspão' de 'ficou muito abaixo por muito tempo'."),
+    "area_abaixo": ("gravidade abaixo do limite", "Limites críticos",
+                    "Junta numa só medida DUAS coisas: o quanto o valor passou do "
+                    "limite mínimo e por quanto tempo ficou assim.",
+                    "Separa uma violação leve de uma grave. Ex.: ficar só 0,1 abaixo "
+                    "do limite por 10 min conta pouco; ficar 2,0 abaixo por 10 min "
+                    "conta muito mais. Quanto maior o número, pior a violação."),
     "min_acima": ("tempo acima do limite", "Limites críticos",
                   "Tempo (min) que o indicador ficou ACIMA do limite máximo definido.",
                   "Quanto maior, mais tempo fora da condição segura, no lado de cima."),
-    "area_acima": ("severidade acima do limite", "Limites críticos",
-                   "Combina o quanto e por quanto tempo ficou acima do limite.",
-                   "Severidade combinada das violações pelo lado de cima."),
+    "area_acima": ("gravidade acima do limite", "Limites críticos",
+                   "Junta numa só medida o quanto o valor passou do limite máximo e "
+                   "por quanto tempo ficou assim.",
+                   "Separa um estouro leve de um grave. Quanto maior o número, pior a "
+                   "violação pelo lado de cima."),
     "pct_fora": ("% do tempo fora da faixa", "Limites críticos",
                  "Percentual do período em que o indicador violou os limites (abaixo ou acima).",
                  "Resumo direto da disciplina operacional; compare períodos com e sem violação "
@@ -2002,20 +2007,28 @@ SUFFIX_INFO: dict[str, tuple[str, str, str, str]] = {
               "Quantas leituras do indicador periódico caíram na janela.",
               "Baixo = período com pouca cobertura (resultado menos confiável)."),
     "per_pct_fora": ("% do tempo fora da faixa", "Periódico + Limites",
-                     "Percentual do período em que o indicador periódico vigente violou os limites.",
-                     "Violações do indicador periódico; compare com o alvo na aba 🚦."),
+                     "Percentual do tempo em que o indicador periódico esteve fora "
+                     "dos limites (abaixo do mínimo ou acima do máximo).",
+                     "Resumo simples da disciplina do indicador periódico; compare "
+                     "com o alvo na aba 🚦."),
     "per_min_abaixo": ("tempo abaixo do limite", "Periódico + Limites",
-                       "Tempo (min) com o indicador periódico abaixo do limite mínimo.",
-                       "Tempo operando abaixo do especificado."),
+                       "Quanto tempo (min) o indicador periódico ficou ABAIXO do "
+                       "limite mínimo definido.",
+                       "Quanto maior, mais tempo operando abaixo do especificado."),
     "per_min_acima": ("tempo acima do limite", "Periódico + Limites",
-                      "Tempo (min) com o indicador periódico acima do limite máximo.",
-                      "Tempo operando acima do especificado."),
-    "per_area_abaixo": ("severidade abaixo do limite", "Periódico + Limites",
-                        "Intensidade × duração abaixo do limite, para o indicador periódico.",
-                        "Severidade combinada da violação pelo lado de baixo."),
-    "per_area_acima": ("severidade acima do limite", "Periódico + Limites",
-                       "Intensidade × duração acima do limite, para o indicador periódico.",
-                       "Severidade combinada da violação pelo lado de cima."),
+                      "Quanto tempo (min) o indicador periódico ficou ACIMA do "
+                      "limite máximo definido.",
+                      "Quanto maior, mais tempo operando acima do especificado."),
+    "per_area_abaixo": ("gravidade abaixo do limite", "Periódico + Limites",
+                        "Junta numa só medida o quanto o valor passou do limite "
+                        "mínimo e por quanto tempo ficou assim.",
+                        "Separa uma violação leve de uma grave: passar só um pouco "
+                        "do limite por pouco tempo conta pouco; passar muito e por "
+                        "muito tempo conta muito mais. Quanto maior, pior."),
+    "per_area_acima": ("gravidade acima do limite", "Periódico + Limites",
+                       "Junta numa só medida o quanto o valor passou do limite "
+                       "máximo e por quanto tempo ficou assim.",
+                       "Separa um estouro leve de um grave. Quanto maior, pior."),
     # --- turnos ----------------------------------------------------------- #
     "mean_t1": ("média no turno 00–08", "Turnos",
                 "Média do indicador apenas no turno 00h–08h.",
