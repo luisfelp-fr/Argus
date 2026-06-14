@@ -81,7 +81,7 @@ O aplicativo abrirá no navegador (por padrão em `http://localhost:8501`).
 | 7 | **Regressão** | Linear simples e múltipla, R², resíduos |
 | 8 | **Comparação entre Grupos** | Teste t, Mann-Whitney, ANOVA, Kruskal-Wallis |
 | 9 | **Controle Estatístico de Processo** | Carta de controle (individuais) |
-| 10 | **Capabilidade Cp/Cpk** | Índices de capabilidade vs. especificação |
+| 10 | **Capabilidade Cp/Cpk** | Normalidade (AD) + transformações (Box-Cox, Johnson…) + Cp/Cpk |
 | 11 | **Análise Temporal** | Tendência, agregação, média móvel |
 | 12 | **Análise com Lag** | Defasagem causa→efeito entre variáveis |
 | 13 | **Outliers** | IQR, Z-score e MAD |
@@ -99,6 +99,25 @@ O Argus foi pensado para quem está aprendendo estatística:
 - **Cards de faixas de referência** para **CV (%)**, **assimetria** e **curtose**:
   mostram as faixas de consideração (ex.: CV baixa/moderada/alta) e **destacam
   automaticamente** em qual faixa o valor da sua variável se encontra.
+
+---
+
+## 🎯 Capabilidade com dados não normais
+
+O Cp/Cpk pressupõe dados **normais**. Na tela **🎯 Capabilidade Cp/Cpk**, o Argus
+segue o mesmo fluxo do Minitab:
+
+1. **Testa a normalidade** dos dados (Anderson-Darling, com p-valor).
+2. Se **não normais**, aplica **todas as transformações** e as ranqueia pela
+   normalidade obtida: **Box-Cox**, **Johnson** (SU/SB/SL), **Logaritmo**,
+   **Raiz quadrada**, **Inverso** e **Yeo-Johnson**.
+3. **Recomenda a mais viável** (maior p-valor após transformar) e deixa você
+   **escolher** qual usar.
+4. Calcula **Cp/Cpk no espaço transformado**, convertendo também os limites de
+   especificação (LIE/LSE) — exatamente como o Minitab.
+
+> Ignorar a normalidade pode inflar o Cp/Cpk e fazer um processo incapaz parecer
+> capaz; por isso a transformação é importante.
 
 ---
 
