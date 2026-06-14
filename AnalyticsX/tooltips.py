@@ -52,15 +52,16 @@ HELP: dict[str, str] = {
         "com o futuro', que inflaria artificialmente o desempenho."
     ),
     "lab_janela": (
-        "Variável de laboratório: o valor divulgado no horário T representa a condição "
-        "MÉDIA do processo na janela entre a análise anterior e T (janela (T−x, T], "
-        "onde x é o intervalo entre divulgações, detectado pela mediana do espaçamento). "
-        "O sistema distribui cada valor nessa janela antes de alinhá-lo aos períodos do alvo."
+        "Indicador periódico (laboratório ou qualquer leitura a cada x horas): o valor "
+        "informado no horário T representa a condição MÉDIA entre a leitura anterior e T "
+        "(janela (T−x, T], onde x é o intervalo entre leituras, detectado pela mediana do "
+        "espaçamento). O sistema distribui cada valor nessa janela antes de alinhá-lo aos "
+        "períodos do alvo."
     ),
     "lab_lag": (
-        "Lag de laboratório: defasagens criadas em múltiplos do intervalo entre análises "
-        "(ex.: análise a cada 4 h → lags de 0, 240, 480 min...), até o lag máximo definido. "
-        "Permite captar efeitos da análise anterior sobre o período atual do alvo."
+        "Lag do indicador periódico: defasagens criadas em múltiplos do intervalo entre "
+        "leituras (ex.: leitura a cada 4 h → lags de 0, 240, 480 min...), até o lag máximo "
+        "definido. Permite captar efeitos da leitura anterior sobre o período atual do alvo."
     ),
     # ----------------------------------------------------------------- #
     # Modelos e explicabilidade
@@ -133,8 +134,8 @@ HELP: dict[str, str] = {
     ),
     "pct_fora": (
         "% fora de faixa: fração do tempo do período em que o indicador ficou fora dos "
-        "limites definidos. Para variáveis de laboratório, é calculada sobre a série "
-        "expandida em janelas (ponderação por tempo), não sobre as divulgações pontuais."
+        "limites definidos. Para indicadores periódicos, é calculada sobre a série "
+        "expandida em janelas (ponderação por tempo), não sobre as leituras pontuais."
     ),
     "area_fora": (
         "Área fora de faixa: soma de (desvio além do limite × tempo). Combina a "
@@ -194,9 +195,9 @@ def glossario_markdown() -> str:
         f"- **Área fora de faixa** — {HELP['area_fora']}\n"
         f"- **Mann-Whitney U** — {HELP['mann_whitney']}\n"
         "\n"
-        "#### 🧪 Variáveis de laboratório\n"
-        f"- **Janela da análise** — {HELP['lab_janela']}\n"
-        f"- **Lag de laboratório** — {HELP['lab_lag']}\n"
+        "#### 🔁 Indicadores periódicos (laboratório ou leituras a cada x horas)\n"
+        f"- **Janela da leitura** — {HELP['lab_janela']}\n"
+        f"- **Lag do indicador periódico** — {HELP['lab_lag']}\n"
         "\n"
         "#### 🧩 Outros conceitos\n"
         f"- **Lag (minutos)** — {HELP['lag']}\n"

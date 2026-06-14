@@ -14,10 +14,10 @@ rng = np.random.default_rng(3)
 # ranking de barras horizontais com nomes longos reais
 nomes = [
     "Moenda_Temperatura_mean_abs_diff_lag_0min", "Fermentacao_pH_area_abaixo_lag_0min",
-    "Moenda_Vazao_mean_lag_0min", "Brix_lab_lab_last_lag_240min",
+    "Moenda_Vazao_mean_lag_0min", "Brix_per_last_lag_240min",
     "Fermentacao_pH_pct_fora_lag_0min", "Moenda_Temperatura_std_lag_480min",
     "Moenda_Pressao_max_rate_lag_960min", "Fermentacao_Nivel_p90_lag_0min",
-    "Pol_lab_lab_mean_lag_240min", "Moenda_Vazao_n_oscilacoes_lag_480min",
+    "Pol_per_mean_lag_240min", "Moenda_Vazao_n_oscilacoes_lag_480min",
 ]
 vals = np.sort(rng.uniform(0.1, 0.95, len(nomes)))
 fig_rank = go.Figure(go.Bar(

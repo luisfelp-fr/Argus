@@ -119,11 +119,12 @@ def render_seasonal_mode() -> None:
     st.header("📈 Análise Sazonal — evidência estatística de influência")
     st.caption(
         "Carregue **uma planilha Excel com abas** de variáveis **contínuas** (minuto "
-        "a minuto), de **laboratório** (divulgadas a cada x horas) e do **indicador "
-        "alvo** — e classifique cada aba. O sistema agrega tudo na janela de cada "
-        "período do alvo, considera efeitos de **lag em minutos** (inclusive das "
-        "análises de laboratório), avalia **limites críticos** e aponta os "
-        "indicadores com maior evidência estatística de influência."
+        "a minuto), **periódicas** (informadas a cada x horas — laboratório ou "
+        "qualquer leitura periódica) e do **indicador alvo** — e classifique cada "
+        "aba. O sistema agrega tudo na janela de cada período do alvo, considera "
+        "efeitos de **lag em minutos** (inclusive dos indicadores periódicos), "
+        "avalia **limites críticos** e aponta os indicadores com maior evidência "
+        "estatística de influência."
     )
 
     with st.expander("ℹ️ Glossário — entenda cada modelo e análise"):
@@ -153,11 +154,12 @@ def render_seasonal_mode() -> None:
             "- **Sufixo** — a estatística calculada na janela do período (tabela abaixo);\n"
             "- **`_lag_Xmin`** — defasagem: `lag_0min` é o período atual do alvo; "
             "`lag_480min` é o valor da variável **480 minutos antes** (efeito "
-            "defasado). Para laboratório, o passo do lag é o intervalo entre análises.\n\n"
-            "**Exemplo:** `Moenda_Temperatura_mean_abs_diff_lag_0min` = *variação "
-            "média entre leituras da Temperatura (aba Moenda), no período atual* — "
-            "mede o quanto o sinal 'treme'; se aparece no topo do ranking com "
-            "correlação negativa, a instabilidade da temperatura está derrubando o alvo."
+            "defasado). Para indicadores periódicos, o passo do lag é o intervalo "
+            "entre leituras.\n\n"
+            "**Exemplo:** `Moenda_Temperatura_std_lag_0min` = *instabilidade da "
+            "Temperatura (aba Moenda), no período atual* — mede o quanto o sinal "
+            "oscila; se aparece no topo do ranking com correlação negativa, a "
+            "instabilidade da temperatura está derrubando o alvo."
         )
         legend_df = analysis.suffix_legend_table()
         for cat in legend_df["Categoria"].unique():
@@ -174,16 +176,16 @@ def render_seasonal_mode() -> None:
         uploaded = st.file_uploader(
             "Arquivo único (Excel com abas) ou CSV de processo",
             type=["xlsx", "xls", "csv"], key="v2_file",
-            help="Excel: cada aba contém variáveis contínuas (minutos), de "
-                 "laboratório (a cada x horas) ou o indicador alvo — você "
+            help="Excel: cada aba contém variáveis contínuas (minutos), "
+                 "periódicas (a cada x horas) ou o indicador alvo — você "
                  "classifica cada aba abaixo. CSV: carregue o processo aqui e o "
                  "alvo em outro CSV.",
         )
         if uploaded is None:
             st.info(
                 "Aguardando o arquivo. Em Excel, use **abas distintas** para "
-                "variáveis contínuas (DataHora + indicadores), variáveis de "
-                "laboratório e o indicador alvo — você informa **qual aba é "
+                "variáveis contínuas (DataHora + indicadores), variáveis "
+                "periódicas e o indicador alvo — você informa **qual aba é "
                 "qual** logo abaixo. Em CSV, carregue o processo aqui e o "
                 "indicador alvo logo abaixo."
             )
@@ -198,13 +200,13 @@ def render_seasonal_mode() -> None:
 
         # rótulos PT-BR <-> papéis internos
         ROLE_PT = {analysis.ROLE_CONTINUA: "Contínua",
-                   analysis.ROLE_LAB: "Laboratório",
+                   analysis.ROLE_PERIODICO: "Periódico",
                    analysis.ROLE_ALVO: "Alvo",
                    analysis.ROLE_IGNORAR: "Ignorar"}
         PT_ROLE = {v: k for k, v in ROLE_PT.items()}
 
         cont_sheets: list[dict] = []   # {"name", "df", "dt_col"}
-        lab_sheets: list[dict] = []    # {"name", "df", "dt_col", "value_cols", "period_min"}
+        lab_sheets: list[dict] = []    # periódicas: {"name","df","dt_col","value_cols","period_min"}
         prod_raw = None
         prod_sheet_name = "Alvo"
 
@@ -238,10 +240,11 @@ def render_seasonal_mode() -> None:
                 column_config={
                     "Tipo": st.column_config.SelectboxColumn(
                         "Tipo", options=list(PT_ROLE), required=True,
-                        help="Contínua: períodos curtos (minutos). Laboratório: "
-                             "análises a cada x horas — o valor divulgado em T "
-                             "representa a média da janela anterior. Alvo: o "
-                             "indicador a explicar (1 aba). Ignorar: não usar.",
+                        help="Contínua: períodos curtos (minutos). Periódico: "
+                             "leituras a cada x horas (laboratório ou outras) — o "
+                             "valor informado em T representa a média da janela "
+                             "anterior. Alvo: o indicador a explicar (1 aba). "
+                             "Ignorar: não usar.",
                     ),
                 },
             )
@@ -249,12 +252,12 @@ def render_seasonal_mode() -> None:
 
             alvo_names = [n for n, r in roles.items() if r == analysis.ROLE_ALVO]
             cont_names = [n for n, r in roles.items() if r == analysis.ROLE_CONTINUA]
-            lab_names = [n for n, r in roles.items() if r == analysis.ROLE_LAB]
+            lab_names = [n for n, r in roles.items() if r == analysis.ROLE_PERIODICO]
             if len(alvo_names) != 1:
                 st.warning("Classifique **exatamente 1 aba** como Alvo para continuar.")
                 return
             if not cont_names and not lab_names:
-                st.warning("Classifique ao menos **1 aba** como Contínua ou Laboratório.")
+                st.warning("Classifique ao menos **1 aba** como Contínua ou Periódico.")
                 return
             prod_sheet_name = alvo_names[0]
             prod_raw = raw_by_sheet[prod_sheet_name]
@@ -276,24 +279,24 @@ def render_seasonal_mode() -> None:
 
             for name in lab_names:
                 df_sheet = raw_by_sheet[name]
-                with st.expander(f"🧪 Laboratório — **{name}**", expanded=False):
+                with st.expander(f"🔁 Periódico — **{name}**", expanded=False):
                     cols = list(df_sheet.columns)
                     guess = analysis.guess_datetime_column(df_sheet)
                     dt_col_s = st.selectbox(
-                        "Coluna de data/hora da divulgação", cols,
+                        "Coluna de data/hora da leitura", cols,
                         index=cols.index(guess) if guess in cols else 0,
                         key=f"v2_labdt_{name}", help=HELP["lab_janela"],
                     )
                     value_opts = [c for c in cols if c != dt_col_s]
                     value_cols = st.multiselect(
-                        "Colunas de análises (valores)", value_opts,
+                        "Colunas de indicadores (valores)", value_opts,
                         default=value_opts, key=f"v2_labvals_{name}",
                     )
                     lab_period_det = None
                     try:
                         _lv, lab_period_det = analysis.parse_lab_sheet(
                             df_sheet, dt_col_s, value_cols or None)
-                        st.metric("Intervalo entre divulgações (detectado)",
+                        st.metric("Intervalo entre leituras (detectado)",
                                   _fmt_periodo(lab_period_det), help=HELP["lab_janela"])
                     except Exception as exc:  # noqa: BLE001
                         st.warning(f"Não foi possível ler esta aba ainda: {exc}")
@@ -393,7 +396,7 @@ def render_seasonal_mode() -> None:
             lp = sh.get("period_min")
             if lp:
                 n_lab = int(np.floor(max_lag_min / lp))
-                caption += (f" Laboratório **{sh['name']}**: {n_lab + 1} bloco(s) "
+                caption += (f" Periódico **{sh['name']}**: {n_lab + 1} bloco(s) "
                             f"de lag (passo = {lp:g} min).")
         st.caption(caption, help=HELP["lab_lag"] if lab_sheets else None)
         use_turnos = st.toggle(
@@ -462,7 +465,7 @@ def render_seasonal_mode() -> None:
                         period_feat, float(max_lag_min), float(period_min)
                     ) if not period_feat.empty else period_feat
 
-                    # 2) Laboratório: alinha às janelas do alvo + lags próprios
+                    # 2) Periódicos: alinha às janelas do alvo + lags próprios
                     lab_period_by_sheet: dict[str, float] = {}
                     lab_frames: list[pd.DataFrame] = []
                     prefix_lab = len(lab_sheets) > 1

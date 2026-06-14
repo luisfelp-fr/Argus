@@ -3,7 +3,7 @@
 Roda o pipeline completo sobre sample_multiabas.xlsx e confere se as relações
 conhecidas aparecem no topo dos rankings:
   +Vazao_mean (lag 0), -Temperatura_std (lag 0),
-  -Brix_lab da divulgação anterior (lag 240 min), -pH < 4.8 (lag 0, pct_fora).
+  -Brix da leitura anterior (lag 240 min), -pH < 4.8 (lag 0, pct_fora).
 
 Uso: python _test_multiabas.py
 """
@@ -16,7 +16,7 @@ XLSX = "sample_multiabas.xlsx"
 
 # ---------------------------------------------------------------- leitura
 sheets = {name: pd.read_excel(XLSX, sheet_name=name)
-          for name in ("Moenda", "Fermentacao", "Lab_Caldo", "Alvo")}
+          for name in ("Moenda", "Fermentacao", "Caldo", "Alvo")}
 
 print("== guess_sheet_role ==")
 for name, df in sheets.items():
@@ -45,14 +45,14 @@ assert abs(steps["Moenda"] - 1) < 0.01 and abs(steps["Fermentacao"] - 5) < 0.01
 MAX_LAG = 480.0
 cont_lagged = analysis.add_lag_features_min(cont_feat, MAX_LAG, period_min)
 
-# ---------------------------------------------------------------- laboratorio
-lab_vals, lab_period = analysis.parse_lab_sheet(sheets["Lab_Caldo"], "DataHora")
-print(f"Periodo do laboratorio detectado: {lab_period:g} min (esperado 240)")
+# ---------------------------------------------------------------- periodicos
+lab_vals, lab_period = analysis.parse_lab_sheet(sheets["Caldo"], "DataHora")
+print(f"Periodo do indicador periodico detectado: {lab_period:g} min (esperado 240)")
 assert abs(lab_period - 240) < 1
 
 lab_lagged = analysis.add_lab_lags(
     lab_vals, lab_period, target_series.index, period_min, max_lag_min=MAX_LAG)
-print(f"Colunas de laboratorio geradas: {list(lab_lagged.columns)[:6]} ... "
+print(f"Colunas periodicas geradas: {list(lab_lagged.columns)[:6]} ... "
       f"({lab_lagged.shape[1]} no total)")
 
 # ---------------------------------------------------------------- merge + limpeza
@@ -75,16 +75,16 @@ def _sr(var: str) -> float:
     return float(stat_idx.loc[var, "Spearman r"]) if var in stat_idx.index else float("nan")
 
 
-# A relação do Brix usa a ÚLTIMA divulgação até T−240min → é a feature
-# ``lab_last`` no lag 240 que a captura exatamente (a ``lab_mean`` da janela de
-# 480 min mistura duas divulgações e não discrimina o lag).
+# A relação do Brix usa a ÚLTIMA leitura até T−240min → é a feature
+# ``per_last`` no lag 240 que a captura exatamente (a ``per_mean`` da janela de
+# 480 min mistura duas leituras e não discrimina o lag).
 checks = {
     "Vazao_mean lag 0 (direta)": _sr("Moenda_Vazao_mean_lag_0min") > 0.3,
     "Temperatura_std lag 0 (inversa)": _sr("Moenda_Temperatura_std_lag_0min") < -0.25,
-    "Brix_lab last lag 240 (inversa)": _sr("Brix_lab_lab_last_lag_240min") < -0.3,
-    "Brix_lab: lag 240 mais forte que lag 0 e 480": (
-        abs(_sr("Brix_lab_lab_last_lag_240min")) > abs(_sr("Brix_lab_lab_last_lag_0min"))
-        and abs(_sr("Brix_lab_lab_last_lag_240min")) > abs(_sr("Brix_lab_lab_last_lag_480min"))
+    "Brix last lag 240 (inversa)": _sr("Brix_per_last_lag_240min") < -0.3,
+    "Brix: lag 240 mais forte que lag 0 e 480": (
+        abs(_sr("Brix_per_last_lag_240min")) > abs(_sr("Brix_per_last_lag_0min"))
+        and abs(_sr("Brix_per_last_lag_240min")) > abs(_sr("Brix_per_last_lag_480min"))
     ),
     "pH pct_fora lag 0 (inversa)": _sr("Fermentacao_pH_pct_fora_lag_0min") < -0.3,
 }
@@ -92,9 +92,9 @@ print("\n== Relacoes conhecidas (sinal e forca do Spearman) ==")
 for k, ok in checks.items():
     print(f"  [{'OK' if ok else 'FALHOU'}] {k}")
 print("  Brix last lag 0 / 240 / 480:",
-      f"{_sr('Brix_lab_lab_last_lag_0min'):+.3f} /",
-      f"{_sr('Brix_lab_lab_last_lag_240min'):+.3f} /",
-      f"{_sr('Brix_lab_lab_last_lag_480min'):+.3f}")
+      f"{_sr('Brix_per_last_lag_0min'):+.3f} /",
+      f"{_sr('Brix_per_last_lag_240min'):+.3f} /",
+      f"{_sr('Brix_per_last_lag_480min'):+.3f}")
 
 # ---------------------------------------------------------------- excursoes
 ferm = sheets["Fermentacao"]
@@ -119,7 +119,7 @@ consolidated = analysis.consolidated_ranking(stat, model.importances, shap_imp)
 texto = analysis.generate_report_text(
     consolidated, model, stat, excursion_tbl=exc_tbl,
     period_min=period_min, n_periodos=len(clean),
-    sheet_names=["Moenda", "Fermentacao", "Lab_Caldo"])
+    sheet_names=["Moenda", "Fermentacao", "Caldo"])
 print(f"\nR2 do modelo (teste): {model.metrics['R2']:.3f}")
 print("\n== Texto do relatorio ==")
 print(texto)

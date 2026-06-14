@@ -3,7 +3,7 @@
 App em Streamlit com **dois modos**, selecionados no topo da página:
 
 - **📈 Análise Sazonal (novo):** planilha **multi-abas** (variáveis contínuas +
-  laboratório + alvo, classificadas pelo usuário); correlaciona o processo com um
+  periódicas + alvo, classificadas pelo usuário); correlaciona o processo com um
   indicador alvo divulgado em período de horas, com limites críticos, excursões e
   **relatório final HTML/PDF**. Veja a seção *"Modo Análise Sazonal"* abaixo.
 - **📊 Correlação Clássica (v1):** a análise original (descrita no restante deste
@@ -26,11 +26,13 @@ usuário** antes da análise:
 
 - **Contínuas** (1 ou mais abas): indicadores em períodos curtos (minutos) —
   `DataHora` + indicadores; cada aba pode ter passo temporal próprio;
-- **Laboratório** (0 ou mais abas): análises divulgadas a cada *x* horas — o valor
-  divulgado no horário `T` representa a **média da janela anterior** `(T−x, T]`
-  (o intervalo *x* é detectado pela mediana do espaçamento entre divulgações);
-- **Alvo** (exatamente 1 aba): o indicador a explicar (produção, análise de
-  laboratório que impacta o KPI etc.), divulgado em período de horas.
+- **Periódicas** (0 ou mais abas): leituras informadas a cada *x* horas —
+  laboratório **ou qualquer variável periódica** (apontamentos, análises manuais,
+  médias horárias etc.); o valor no horário `T` representa a **média da janela
+  anterior** `(T−x, T]` (o intervalo *x* é detectado pela mediana do espaçamento
+  entre leituras);
+- **Alvo** (exatamente 1 aba): o indicador a explicar (produção, análise que
+  impacta o KPI etc.), divulgado em período de horas.
 
 O sistema **sugere a classificação** por heurística (nome da aba + espaçamento dos
 registros) e o usuário confirma/ajusta. Em CSV, sem abas, carregue o alvo num
@@ -42,11 +44,11 @@ segundo upload (fluxo de 2 bases preservado).
    % de ausentes.
 2. **Instabilidade:** Δ médio entre leituras, taxa máxima de variação, nº de
    oscilações bruscas.
-3. **Laboratório alinhado ao alvo:** cada divulgação é expandida na sua janela
+3. **Periódicos alinhados ao alvo:** cada leitura é expandida na sua janela
    `(T−x, T]` e agregada por período do alvo (média ponderada pelo tempo, última
-   divulgação, nº de divulgações), com **lags em múltiplos do intervalo entre
-   análises**.
-4. **Limites críticos** (mín/máx por indicador, contínuas e laboratório): tempo e
+   leitura, nº de leituras), com **lags em múltiplos do intervalo entre
+   leituras**.
+4. **Limites críticos** (mín/máx por indicador, contínuas e periódicas): tempo e
    área fora de faixa como variáveis explicativas **+ análise de excursões** —
    eventos contíguos fora de faixa, linha do tempo, e teste de **Mann-Whitney U**
    comparando o alvo em períodos com × sem violação (aba 🚦).
@@ -74,7 +76,7 @@ segundo upload (fluxo de 2 bases preservado).
 
 ```bash
 python sample_data_multiabas.py    # cria sample_multiabas.xlsx (Moenda 1min, Fermentacao 5min,
-                                   # Lab_Caldo 4h, Alvo 8h) com relacoes conhecidas
+                                   # Caldo 4h [periodico], Alvo 8h) com relacoes conhecidas
 python _test_multiabas.py          # smoke test headless do pipeline completo
 python _test_ui_apptest.py         # teste de UI (AppTest): classificacao + processamento
 streamlit run app.py               # modo Sazonal: suba o arquivo, confirme a classificacao,
@@ -82,8 +84,8 @@ streamlit run app.py               # modo Sazonal: suba o arquivo, confirme a cl
 ```
 
 Espera-se confirmar: `Moenda_Vazao_mean_lag_0min` (direto), `Moenda_Temperatura_std_lag_0min`
-(inverso), `Brix_lab_lab_last_lag_240min` (efeito defasado da divulgação anterior do
-laboratório) e `Fermentacao_pH_pct_fora_lag_0min` (Mann-Whitney p < 0,05 na aba 🚦).
+(inverso), `Brix_per_last_lag_240min` (efeito defasado da leitura periódica anterior)
+e `Fermentacao_pH_pct_fora_lag_0min` (Mann-Whitney p < 0,05 na aba 🚦).
 
 ---
 

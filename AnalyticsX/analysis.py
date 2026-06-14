@@ -1527,17 +1527,18 @@ def to_excel_multi(sheets: dict) -> bytes:
 
 # =========================================================================== #
 #                                                                             #
-#   SEÇÃO B — PLANILHA MULTI-ABAS (contínuas + laboratório + alvo),           #
+#   SEÇÃO B — PLANILHA MULTI-ABAS (contínuas + periódicos + alvo),            #
 #   excursões de limites críticos e texto do relatório final                  #
 #   --------------------------------------------------------------           #
 #   O usuário classifica cada aba do Excel como variáveis CONTÍNUAS           #
-#   (minuto a minuto), de LABORATÓRIO (divulgadas a cada x horas; o valor     #
-#   divulgado em T representa a média da janela (T−x, T]) ou ALVO.            #
+#   (minuto a minuto), PERIÓDICAS (informadas a cada x horas — laboratório    #
+#   OU qualquer leitura periódica; o valor em T representa a média da janela  #
+#   (T−x, T]) ou ALVO.                                                        #
 #                                                                             #
 # =========================================================================== #
 
 ROLE_CONTINUA = "continua"
-ROLE_LAB = "laboratorio"
+ROLE_PERIODICO = "periodico"
 ROLE_ALVO = "alvo"
 ROLE_IGNORAR = "ignorar"
 
@@ -1563,10 +1564,10 @@ def guess_datetime_column(df: pd.DataFrame) -> str | None:
 
 
 def guess_sheet_role(name: str, df: pd.DataFrame) -> str:
-    """Sugere o papel de uma aba: alvo, laboratório ou contínua (heurística).
+    """Sugere o papel de uma aba: alvo, periódico ou contínua (heurística).
 
     - Nome contendo alvo/produção/rendimento/kpi → alvo;
-    - espaçamento mediano ≥ 60 min entre registros → laboratório;
+    - espaçamento mediano ≥ 60 min entre registros → periódico;
     - caso contrário → contínua.
     """
     n = _clean_token(name).lower()
@@ -1578,7 +1579,7 @@ def guess_sheet_role(name: str, df: pd.DataFrame) -> str:
         if len(dt) >= 2:
             step = estimate_step_minutes(dt)
             if step >= 60.0:
-                return ROLE_LAB
+                return ROLE_PERIODICO
     return ROLE_CONTINUA
 
 
@@ -1621,16 +1622,17 @@ def build_period_features_multi(
 
 
 # --------------------------------------------------------------------------- #
-# B.3  Variáveis de laboratório alinhadas às janelas do alvo
+# B.3  Variáveis PERIÓDICAS (laboratório ou qualquer leitura a cada x horas)
+#      alinhadas às janelas do alvo
 # --------------------------------------------------------------------------- #
 def parse_lab_sheet(
     df: pd.DataFrame, dt_col: str, value_cols: list[str] | None = None
 ) -> tuple[pd.DataFrame, float]:
-    """Lê uma aba de laboratório como série dos instantes de divulgação.
+    """Lê uma aba de indicadores periódicos como série dos instantes de leitura.
 
     Retorna ``(lab_vals, lab_period_min)``: ``lab_vals`` indexado pelos horários
-    de divulgação (duplicatas agrupadas pela média) e ``lab_period_min`` = mediana
-    do espaçamento entre divulgações. Cada valor divulgado em T representa a
+    de leitura (duplicatas agrupadas pela média) e ``lab_period_min`` = mediana
+    do espaçamento entre leituras. Cada valor informado em T representa a
     média da janela ``(T − lab_period, T]``.
     """
     dt = pd.to_datetime(df[dt_col], dayfirst=True, errors="coerce")
@@ -1641,21 +1643,21 @@ def parse_lab_sheet(
     vals = vals.groupby(level=0).mean().sort_index()
     vals = vals.dropna(how="all")
     if len(vals) < 2:
-        raise ValueError("São necessárias ao menos 2 divulgações de laboratório.")
+        raise ValueError("São necessárias ao menos 2 leituras do indicador periódico.")
     diffs = np.diff(vals.index.values).astype("timedelta64[s]").astype(float)
     diffs = diffs[diffs > 0]
     lab_period_min = float(np.median(diffs)) / 60.0 if len(diffs) else 240.0
-    vals.index.name = "divulgacao"
+    vals.index.name = "leitura"
     return vals, lab_period_min
 
 
 def _lab_step_grid(
     lab_vals: pd.DataFrame, lab_period_min: float, grid_step_min: float
 ) -> pd.DataFrame:
-    """Expande as divulgações numa série-degrau em grade fina.
+    """Expande as leituras periódicas numa série-degrau em grade fina.
 
-    Cada valor divulgado em T vale para todo o intervalo ``(T − x, T]``; pontos
-    da grade sem divulgação dentro dessa tolerância ficam NaN.
+    Cada valor informado em T vale para todo o intervalo ``(T − x, T]``; pontos
+    da grade sem leitura dentro dessa tolerância ficam NaN.
     """
     start = lab_vals.index.min() - pd.Timedelta(minutes=lab_period_min)
     end = lab_vals.index.max()
@@ -1673,17 +1675,17 @@ def lab_window_features(
     limits: dict | None = None,
     lag_shift_min: float = 0.0,
 ) -> pd.DataFrame:
-    """Alinha variáveis de laboratório às janelas do alvo (semântica (T−x, T]).
+    """Alinha indicadores periódicos às janelas do alvo (semântica (T−x, T]).
 
     A série de cada variável é expandida em degrau numa grade fina e agregada na
     janela ``(T_{i-1}, T_i]`` de cada âncora do alvo. Com ``lag_shift_min`` > 0,
-    as divulgações são deslocadas para FRENTE no tempo — a janela do alvo passa a
-    "enxergar" o laboratório de ``lag_shift_min`` minutos atrás.
+    as leituras são deslocadas para FRENTE no tempo — a janela do alvo passa a
+    "enxergar" o indicador periódico de ``lag_shift_min`` minutos atrás.
 
-    Por variável: ``{col}_lab_mean`` (média ponderada pelo tempo),
-    ``{col}_lab_last`` (última divulgação dentro da janela), ``{col}_lab_n``
-    (nº de divulgações na janela) e, com limites ``{col: (lo, hi)}``:
-    ``_lab_pct_fora``, ``_lab_min_abaixo/acima`` (minutos), ``_lab_area_abaixo/
+    Por variável: ``{col}_per_mean`` (média ponderada pelo tempo),
+    ``{col}_per_last`` (última leitura dentro da janela), ``{col}_per_n``
+    (nº de leituras na janela) e, com limites ``{col: (lo, hi)}``:
+    ``_per_pct_fora``, ``_per_min_abaixo/acima`` (minutos), ``_per_area_abaixo/
     acima`` (desvio × tempo). Sem std/cv/oscilações — seriam artificiais numa
     série-degrau.
     """
@@ -1713,10 +1715,10 @@ def lab_window_features(
         for c in lab_vals.columns:
             base = _clean_token(c)
             arr = win[c].dropna().to_numpy(dtype=float)
-            rec[f"{base}_lab_mean"] = float(np.mean(arr)) if arr.size else np.nan
+            rec[f"{base}_per_mean"] = float(np.mean(arr)) if arr.size else np.nan
             dvals = disc[c].dropna()
-            rec[f"{base}_lab_last"] = float(dvals.iloc[-1]) if len(dvals) else np.nan
-            rec[f"{base}_lab_n"] = int(len(dvals))
+            rec[f"{base}_per_last"] = float(dvals.iloc[-1]) if len(dvals) else np.nan
+            rec[f"{base}_per_n"] = int(len(dvals))
             if c in limits and arr.size:
                 lo, hi = limits[c]
                 has_lo = lo is not None and not (isinstance(lo, float) and np.isnan(lo))
@@ -1725,14 +1727,14 @@ def lab_window_features(
                 if has_lo:
                     below = arr < lo
                     out_mask |= below
-                    rec[f"{base}_lab_min_abaixo"] = float(np.sum(below) * grid_step)
-                    rec[f"{base}_lab_area_abaixo"] = float(np.sum((lo - arr)[below]) * grid_step)
+                    rec[f"{base}_per_min_abaixo"] = float(np.sum(below) * grid_step)
+                    rec[f"{base}_per_area_abaixo"] = float(np.sum((lo - arr)[below]) * grid_step)
                 if has_hi:
                     above = arr > hi
                     out_mask |= above
-                    rec[f"{base}_lab_min_acima"] = float(np.sum(above) * grid_step)
-                    rec[f"{base}_lab_area_acima"] = float(np.sum((arr - hi)[above]) * grid_step)
-                rec[f"{base}_lab_pct_fora"] = float(np.sum(out_mask) / arr.size * 100.0)
+                    rec[f"{base}_per_min_acima"] = float(np.sum(above) * grid_step)
+                    rec[f"{base}_per_area_acima"] = float(np.sum((arr - hi)[above]) * grid_step)
+                rec[f"{base}_per_pct_fora"] = float(np.sum(out_mask) / arr.size * 100.0)
         records.append(rec)
 
     return pd.DataFrame(records, index=pd.DatetimeIndex(anchors, name="periodo"))
@@ -1747,11 +1749,11 @@ def add_lab_lags(
     max_lag_min: float,
     limits: dict | None = None,
 ) -> pd.DataFrame:
-    """Cria blocos de lag de laboratório em múltiplos do período entre análises.
+    """Cria blocos de lag do indicador periódico em múltiplos do período entre leituras.
 
     ``k = 0..floor(max_lag_min / lab_period_min)``; cada bloco desloca as
-    divulgações em ``k·lab_period_min`` minutos e rotula as colunas como
-    ``{col}_lab_..._lag_{m}min`` (mesmo padrão reconhecido pelo diagnóstico).
+    leituras em ``k·lab_period_min`` minutos e rotula as colunas como
+    ``{col}_per_..._lag_{m}min`` (mesmo padrão reconhecido pelo diagnóstico).
     """
     lab_period_min = lab_period_min if lab_period_min and lab_period_min > 0 else 1.0
     n_lags = int(np.floor(max_lag_min / lab_period_min)) if max_lag_min > 0 else 0
@@ -1858,8 +1860,8 @@ def excursion_vs_target(merged: pd.DataFrame, target: str = "Sazonal") -> pd.Dat
     Para cada coluna ``*_pct_fora`` em lag 0 da base de modelagem: correlação de
     Spearman (com p-value) entre a fração fora de faixa e o alvo, e teste de
     Mann-Whitney U comparando o alvo nos períodos COM violação (pct_fora > 0)
-    vs. SEM violação. Cobre contínuas (``_pct_fora``) e laboratório
-    (``_lab_pct_fora``).
+    vs. SEM violação. Cobre contínuas (``_pct_fora``) e periódicas
+    (``_per_pct_fora``).
     """
     if target not in merged.columns:
         return pd.DataFrame()
@@ -1916,53 +1918,53 @@ SUFFIX_INFO: dict[str, tuple[str, str, str, str]] = {
              "Valor médio do indicador na janela do período.",
              "Mostra o patamar de operação. Se aparece no topo do ranking, o NÍVEL "
              "do indicador influencia o alvo (suba/desça o setpoint conforme o sentido)."),
-    "median": ("mediana", "Estatística básica",
-               "Valor central da janela (50% das leituras abaixo, 50% acima).",
-               "Como a média, porém imune a picos isolados — bom para indicadores com outliers."),
-    "min": ("mínimo", "Estatística básica",
+    "median": ("valor típico (mediana)", "Estatística básica",
+               "Valor central da janela (metade das leituras acima, metade abaixo).",
+               "Como a média, porém pouco afetado por picos isolados."),
+    "min": ("valor mínimo", "Estatística básica",
             "Menor leitura registrada na janela.",
-            "Captura mergulhos pontuais; relevante quando quedas momentâneas prejudicam o processo."),
-    "max": ("máximo", "Estatística básica",
+            "Captura quedas pontuais; relevante quando mergulhos momentâneos prejudicam o processo."),
+    "max": ("valor máximo", "Estatística básica",
             "Maior leitura registrada na janela.",
             "Captura picos pontuais; relevante quando estouros momentâneos prejudicam o processo."),
-    "range": ("amplitude", "Instabilidade",
-              "Diferença entre o máximo e o mínimo da janela.",
-              "Amplitude alta = janela com grande variação; associação com o alvo indica "
+    "range": ("variação total", "Instabilidade",
+              "Diferença entre o maior e o menor valor da janela.",
+              "Alta = janela com grande variação; associação com o alvo indica "
               "que oscilações amplas impactam o resultado."),
-    "std": ("desvio padrão", "Instabilidade",
-            "Dispersão das leituras em torno da média na janela.",
-            "Mede a INSTABILIDADE. Correlação (geralmente negativa) com o alvo indica que "
-            "operar de forma instável prejudica o resultado — estabilize o controle."),
-    "cv": ("coeficiente de variação", "Instabilidade",
-           "Desvio padrão dividido pela média (instabilidade relativa, em fração).",
-           "Como o desvio padrão, mas comparável entre indicadores de escalas diferentes."),
-    "p10": ("10º percentil", "Estatística básica",
-            "Valor abaixo do qual ficam 10% das leituras da janela.",
+    "std": ("instabilidade", "Instabilidade",
+            "O quanto as leituras variam em torno da média (desvio padrão).",
+            "Associação (em geral negativa) com o alvo indica que operar instável "
+            "prejudica o resultado — estabilize o controle."),
+    "cv": ("instabilidade relativa", "Instabilidade",
+           "Instabilidade proporcional à média (comparável entre escalas diferentes).",
+           "Como a instabilidade, mas comparável entre indicadores de grandezas diferentes."),
+    "p10": ("valores baixos (P10)", "Estatística básica",
+            "Patamar abaixo do qual ficam 10% das leituras da janela.",
             "Representa os 'vales típicos' do período (mínimos sustentados, sem o ruído "
             "de um único pico). Útil quando operar baixo demais prejudica."),
-    "p25": ("25º percentil", "Estatística básica",
-            "Valor abaixo do qual ficam 25% das leituras da janela.",
+    "p25": ("valores médio-baixos (P25)", "Estatística básica",
+            "Patamar abaixo do qual ficam 25% das leituras da janela.",
             "Parte baixa da operação típica do período."),
-    "p75": ("75º percentil", "Estatística básica",
-            "Valor abaixo do qual ficam 75% das leituras da janela.",
+    "p75": ("valores médio-altos (P75)", "Estatística básica",
+            "Patamar abaixo do qual ficam 75% das leituras da janela.",
             "Parte alta da operação típica do período."),
-    "p90": ("90º percentil", "Estatística básica",
-            "Valor abaixo do qual ficam 90% das leituras da janela.",
+    "p90": ("valores altos (P90)", "Estatística básica",
+            "Patamar abaixo do qual ficam 90% das leituras da janela.",
             "Representa os 'picos típicos' do período (máximos sustentados)."),
-    "sum": ("soma", "Estatística básica",
+    "sum": ("total", "Estatística básica",
             "Soma de todas as leituras da janela.",
             "Em vazões/contagens equivale ao volume/total do período; segue a média quando "
             "o nº de leituras é constante."),
-    "mean_abs_diff": ("variação média entre leituras", "Instabilidade",
-                      "Média do |Δ| entre leituras consecutivas (o quanto o sinal 'treme').",
-                      "Alto = sinal serrilhado/ruidoso ou com manobras frequentes. Associação "
-                      "com o alvo indica que o vai-e-vem do controle impacta o resultado."),
-    "max_rate": ("variação máxima instantânea", "Instabilidade",
-                 "Maior |Δ| entre duas leituras consecutivas na janela.",
+    "mean_abs_diff": ("oscilação", "Instabilidade",
+                      "O quanto o sinal varia de uma leitura para a outra, em média.",
+                      "Alto = sinal ruidoso ou com muitas manobras; o vai-e-vem do controle "
+                      "pode impactar o resultado."),
+    "max_rate": ("variação brusca", "Instabilidade",
+                 "Maior salto entre duas leituras consecutivas na janela.",
                  "Captura degraus/transientes bruscos (partidas, paradas, manobras)."),
-    "n_oscilacoes": ("nº de oscilações bruscas", "Instabilidade",
-                     "Quantidade de variações maiores que 3 desvios padrão do Δ típico.",
-                     "Conta eventos de salto anormal; alto = controle oscilando ou distúrbios repetidos."),
+    "n_oscilacoes": ("saltos bruscos", "Instabilidade",
+                     "Quantidade de variações muito acima do normal do período.",
+                     "Conta eventos anormais; alto = controle oscilando ou distúrbios repetidos."),
     "n_valid": ("nº de leituras válidas", "Qualidade do dado",
                 "Quantidade de leituras não vazias na janela.",
                 "Baixo = falha de medição/comunicação no período; os demais atributos ficam menos confiáveis."),
@@ -1970,50 +1972,50 @@ SUFFIX_INFO: dict[str, tuple[str, str, str, str]] = {
                     "Percentual de leituras esperadas que não chegaram na janela.",
                     "Alto = sensor/coletor com falha; avalie antes de confiar no período."),
     # --- limites críticos ------------------------------------------------ #
-    "min_abaixo": ("minutos abaixo do limite", "Limites críticos",
+    "min_abaixo": ("tempo abaixo do limite", "Limites críticos",
                    "Tempo (min) que o indicador ficou ABAIXO do limite mínimo definido.",
                    "Quanto maior, mais tempo fora da condição segura; associação com o alvo "
                    "quantifica o prejuízo de operar abaixo do limite."),
     "area_abaixo": ("severidade abaixo do limite", "Limites críticos",
-                    "Soma de (desvio abaixo do limite × tempo) — combina intensidade e duração.",
+                    "Combina o quanto e por quanto tempo ficou abaixo do limite.",
                     "Diferencia 'passou de raspão' de 'ficou muito abaixo por muito tempo'."),
-    "min_acima": ("minutos acima do limite", "Limites críticos",
+    "min_acima": ("tempo acima do limite", "Limites críticos",
                   "Tempo (min) que o indicador ficou ACIMA do limite máximo definido.",
                   "Quanto maior, mais tempo fora da condição segura, no lado de cima."),
     "area_acima": ("severidade acima do limite", "Limites críticos",
-                   "Soma de (desvio acima do limite × tempo).",
+                   "Combina o quanto e por quanto tempo ficou acima do limite.",
                    "Severidade combinada das violações pelo lado de cima."),
     "pct_fora": ("% do tempo fora da faixa", "Limites críticos",
                  "Percentual do período em que o indicador violou os limites (abaixo ou acima).",
                  "Resumo direto da disciplina operacional; compare períodos com e sem violação "
                  "na aba 🚦 (teste de Mann-Whitney)."),
-    # --- laboratório ------------------------------------------------------ #
-    "lab_mean": ("média da análise de laboratório", "Laboratório",
-                 "Média ponderada pelo tempo das análises vigentes na janela — cada valor "
-                 "divulgado em T vale para a janela (T−x, T].",
-                 "Nível médio da qualidade medida em laboratório durante o período do alvo."),
-    "lab_last": ("última análise de laboratório", "Laboratório",
-                 "Valor da última divulgação de laboratório dentro da janela.",
-                 "Condição mais recente conhecida ao fechar o período; com lag, representa a "
-                 "análise de períodos anteriores (efeito defasado da qualidade)."),
-    "lab_n": ("nº de análises de laboratório", "Laboratório",
-              "Quantidade de divulgações de laboratório dentro da janela.",
-              "Baixo = período com pouca cobertura analítica (resultado menos confiável)."),
-    "lab_pct_fora": ("% do tempo da análise fora da faixa", "Laboratório + Limites",
-                     "Percentual do período em que a análise de laboratório vigente violou os limites.",
-                     "Violations de qualidade; compare com o alvo na aba 🚦."),
-    "lab_min_abaixo": ("minutos da análise abaixo do limite", "Laboratório + Limites",
-                       "Tempo (min) com a análise vigente abaixo do limite mínimo.",
-                       "Tempo de operação com qualidade abaixo do especificado."),
-    "lab_min_acima": ("minutos da análise acima do limite", "Laboratório + Limites",
-                      "Tempo (min) com a análise vigente acima do limite máximo.",
-                      "Tempo de operação com qualidade acima do especificado."),
-    "lab_area_abaixo": ("severidade da análise abaixo do limite", "Laboratório + Limites",
-                        "Desvio abaixo do limite × tempo, para a análise vigente.",
-                        "Severidade combinada (intensidade × duração) da violação de qualidade."),
-    "lab_area_acima": ("severidade da análise acima do limite", "Laboratório + Limites",
-                       "Desvio acima do limite × tempo, para a análise vigente.",
-                       "Severidade combinada da violação de qualidade pelo lado de cima."),
+    # --- indicadores periódicos (laboratório ou leituras a cada x horas) - #
+    "per_mean": ("média", "Indicadores periódicos",
+                 "Média (ponderada pelo tempo) das leituras do indicador periódico vigentes "
+                 "na janela — cada valor vale para a janela (T−x, T].",
+                 "Nível médio do indicador periódico durante o período do alvo."),
+    "per_last": ("última leitura", "Indicadores periódicos",
+                 "Valor da última leitura do indicador periódico dentro da janela.",
+                 "Condição mais recente conhecida ao fechar o período; com defasagem, "
+                 "representa leituras de períodos anteriores (efeito defasado)."),
+    "per_n": ("nº de leituras", "Indicadores periódicos",
+              "Quantas leituras do indicador periódico caíram na janela.",
+              "Baixo = período com pouca cobertura (resultado menos confiável)."),
+    "per_pct_fora": ("% do tempo fora da faixa", "Periódico + Limites",
+                     "Percentual do período em que o indicador periódico vigente violou os limites.",
+                     "Violações do indicador periódico; compare com o alvo na aba 🚦."),
+    "per_min_abaixo": ("tempo abaixo do limite", "Periódico + Limites",
+                       "Tempo (min) com o indicador periódico abaixo do limite mínimo.",
+                       "Tempo operando abaixo do especificado."),
+    "per_min_acima": ("tempo acima do limite", "Periódico + Limites",
+                      "Tempo (min) com o indicador periódico acima do limite máximo.",
+                      "Tempo operando acima do especificado."),
+    "per_area_abaixo": ("severidade abaixo do limite", "Periódico + Limites",
+                        "Intensidade × duração abaixo do limite, para o indicador periódico.",
+                        "Severidade combinada da violação pelo lado de baixo."),
+    "per_area_acima": ("severidade acima do limite", "Periódico + Limites",
+                       "Intensidade × duração acima do limite, para o indicador periódico.",
+                       "Severidade combinada da violação pelo lado de cima."),
     # --- turnos ----------------------------------------------------------- #
     "mean_t1": ("média no turno 00–08", "Turnos",
                 "Média do indicador apenas no turno 00h–08h.",
@@ -2024,19 +2026,19 @@ SUFFIX_INFO: dict[str, tuple[str, str, str, str]] = {
     "mean_t3": ("média no turno 16–24", "Turnos",
                 "Média do indicador apenas no turno 16h–24h.",
                 "Permite isolar diferenças entre turnos."),
-    "std_t1": ("desvio padrão no turno 00–08", "Turnos",
+    "std_t1": ("instabilidade no turno 00–08", "Turnos",
                "Instabilidade do indicador apenas no turno 00h–08h.",
                "Instabilidade por turno — aponta o turno que mais oscila."),
-    "std_t2": ("desvio padrão no turno 08–16", "Turnos",
+    "std_t2": ("instabilidade no turno 08–16", "Turnos",
                "Instabilidade do indicador apenas no turno 08h–16h.",
                "Instabilidade por turno."),
-    "std_t3": ("desvio padrão no turno 16–24", "Turnos",
+    "std_t3": ("instabilidade no turno 16–24", "Turnos",
                "Instabilidade do indicador apenas no turno 16h–24h.",
                "Instabilidade por turno."),
 }
 
 # sufixos ordenados do mais longo para o mais curto (match correto de
-# "mean_abs_diff" antes de "mean", "lab_mean" antes de "mean", etc.)
+# "mean_abs_diff" antes de "mean", "per_mean" antes de "mean", etc.)
 _SUFFIXES_BY_LEN = sorted(SUFFIX_INFO, key=len, reverse=True)
 
 
@@ -2048,7 +2050,8 @@ def suffix_legend_table() -> pd.DataFrame:
         for suf, (rotulo, cat, mede, impacto) in SUFFIX_INFO.items()
     ]
     order = ["Estatística básica", "Instabilidade", "Limites críticos",
-             "Laboratório", "Laboratório + Limites", "Turnos", "Qualidade do dado"]
+             "Indicadores periódicos", "Periódico + Limites", "Turnos",
+             "Qualidade do dado"]
     df = pd.DataFrame(rows)
     df["__o__"] = df["Categoria"].map({c: i for i, c in enumerate(order)}).fillna(99)
     return df.sort_values(["__o__", "Sufixo"]).drop(columns="__o__").reset_index(drop=True)
@@ -2137,10 +2140,10 @@ def generate_report_text(
 ) -> str:
     """Texto (markdown) do relatório final: por que cada variável entrou no topo.
 
-    Combina o ranking consolidado, as estatísticas (Spearman/p-value/MI), o
-    desempenho do modelo e as análises de excursão num texto gerencial. Os nomes
-    técnicos das variáveis são convertidos em frases legíveis (o código original
-    aparece entre parênteses para cruzamento com as tabelas).
+    Escrito em linguagem clara para o usuário final: os nomes técnicos das
+    variáveis são convertidos em frases legíveis (ex.: "instabilidade da
+    temperatura, sem defasagem") e a evidência estatística é descrita em
+    palavras (associação forte/moderada, direta/inversa, significativa).
     """
     if consolidated is None or consolidated.empty:
         return "Não há evidência estatística suficiente para um relatório."
@@ -2148,53 +2151,51 @@ def generate_report_text(
     stat_idx = (stat_df.set_index("Variável")
                 if stat_df is not None and not stat_df.empty else pd.DataFrame())
 
-    linhas: list[str] = ["## Análise das principais variáveis", ""]
+    def _forca(v: float) -> str:
+        v = abs(v)
+        return "forte" if v >= 0.5 else "moderada" if v >= 0.3 else "leve"
+
+    linhas: list[str] = ["## Principais variáveis associadas ao indicador-alvo", ""]
     ctx = []
     if n_periodos:
         ctx.append(f"**{n_periodos} períodos** analisados")
     if period_min:
-        ctx.append(f"período do indicador alvo de **{period_min:g} min** "
-                   f"(~{period_min / 60:g} h)")
+        ctx.append(f"cada período cobre **{period_min:g} min** (~{period_min / 60:g} h)")
     if ctx:
         linhas += ["Base da análise: " + "; ".join(ctx) + ".", ""]
 
     top = consolidated.head(top_n)
     for rank, (_, row) in enumerate(top.iterrows(), start=1):
         var = str(row["Variável"])
-        motivos: list[str] = []
-        if var in stat_idx.index:
-            sr = stat_idx.loc[var].get("Spearman r")
-            sp = stat_idx.loc[var].get("Spearman p")
-            mi = stat_idx.loc[var].get("Mutual Information")
-            if pd.notna(sr):
-                sentido = "direta (sobe junto)" if sr > 0 else "inversa (sobe quando o alvo cai)"
-                sig = ""
-                if pd.notna(sp):
-                    sig = (" — estatisticamente significativa (p = "
-                           f"{sp:.3f})" if sp < 0.05 else f" (p = {sp:.3f})")
-                motivos.append(
-                    f"correlação de Spearman {sr:+.2f}, relação {sentido}{sig}")
-            if pd.notna(mi) and mi > 0:
-                motivos.append(f"informação mútua de {mi:.3f} (captura efeitos não lineares)")
-        if "SHAP" in consolidated.columns and pd.notna(row.get("SHAP")):
-            motivos.append("impacto relevante nas previsões do modelo (SHAP)")
-        elif "Importância modelo" in consolidated.columns and pd.notna(row.get("Importância modelo")):
-            motivos.append("variável bastante utilizada pelo modelo preditivo")
+        partes: list[str] = []
+        sr = stat_idx.loc[var].get("Spearman r") if var in stat_idx.index else None
+        sp = stat_idx.loc[var].get("Spearman p") if var in stat_idx.index else None
+        if pd.notna(sr):
+            sentido = ("direta — sobe junto com o alvo" if sr > 0
+                       else "inversa — sobe quando o alvo cai")
+            sig = (", estatisticamente significativa"
+                   if pd.notna(sp) and sp < 0.05 else "")
+            partes.append(f"associação {_forca(sr)} e {sentido}{sig}")
+        elif ("SHAP" in consolidated.columns and pd.notna(row.get("SHAP"))) or (
+                "Importância modelo" in consolidated.columns
+                and pd.notna(row.get("Importância modelo"))):
+            partes.append("peso relevante no modelo preditivo")
         tema = _theme_of(var)
         if tema:
-            motivos.append(f"comportamento ligado a **{tema}**")
+            partes.append(f"relacionada a **{tema}**")
         lag_txt = _fmt_lag_legivel(var)
         if lag_txt and lag_txt != "no mesmo período":
-            motivos.append(f"efeito **defasado**: o comportamento de {lag_txt} "
-                           "influencia o período atual")
-        score = row.get("Score consolidado")
+            partes.append(f"**efeito defasado** — o comportamento de {lag_txt} "
+                          "influencia o período atual")
+
         hum = humanize_variable(var, sheet_names)
+        score = row.get("Score consolidado")
         linha = f"**{rank}. {hum[:1].upper() + hum[1:]}**"
         if pd.notna(score):
-            linha += f" (score {score:.3f})"
-        linha += f" [`{var}`]"
-        linha += " — " + ("; ".join(motivos) if motivos else
-                          "evidência combinada das fontes estatísticas e do modelo") + "."
+            linha += f" — relevância {score:.2f}"
+        frase = "; ".join(partes) if partes else \
+            "evidência combinada das análises e do modelo"
+        linha += f". {frase[:1].upper() + frase[1:]}."
         linhas.append(linha)
     linhas.append("")
 
@@ -2204,15 +2205,16 @@ def generate_report_text(
             linhas.append("## Limites críticos com impacto detectado")
             linhas.append("")
             for _, r in sig.iterrows():
-                delta = r.get("Δ mediana")
-                delta_txt = (f" (mediana do alvo muda {delta:+.2f} nos períodos com violação)"
-                             if pd.notna(delta) else "")
                 hum = humanize_variable(r["Variável"], sheet_names)
-                linhas.append(
-                    f"- **{hum[:1].upper() + hum[1:]}**: "
-                    f"períodos com violação do limite apresentam alvo significativamente "
-                    f"diferente (Mann-Whitney p = {r['Mann-Whitney p']:.3f}){delta_txt}."
-                )
+                delta = r.get("Δ mediana")
+                if pd.notna(delta):
+                    direc = "menor" if delta < 0 else "maior"
+                    txt = (f"períodos com violação tiveram o indicador-alvo "
+                           f"significativamente **{direc}** (em média, {delta:+.2f})")
+                else:
+                    txt = ("períodos com violação tiveram o indicador-alvo "
+                           "significativamente diferente")
+                linhas.append(f"- **{hum[:1].upper() + hum[1:]}**: {txt}.")
             linhas.append("")
 
     if model_result is not None and not np.isnan(model_result.metrics.get("R2", np.nan)):
@@ -2220,14 +2222,14 @@ def generate_report_text(
         linhas.append("## Desempenho do modelo")
         linhas.append("")
         linhas.append(
-            f"O modelo {model_result.model_name} explicou cerca de **{r2 * 100:.0f}%** "
-            f"da variação do indicador alvo no período de teste "
-            f"(MAE = {model_result.metrics['MAE']:.2f})."
+            f"O modelo conseguiu explicar cerca de **{r2 * 100:.0f}%** da variação "
+            f"do indicador-alvo nos períodos de teste "
+            f"(erro médio de {model_result.metrics['MAE']:.2f})."
         )
         linhas.append("")
 
     linhas.append(
-        "*Ressalva: as variáveis acima têm a maior **evidência estatística** de "
-        "influência — são prováveis causas a investigar, não causalidade comprovada.*"
+        "*Observação: as variáveis acima são as de maior **evidência estatística** "
+        "de influência — prováveis causas a investigar, não causalidade comprovada.*"
     )
     return "\n".join(linhas)

@@ -2,16 +2,16 @@
 
 import analysis
 
-sheets = ["Moenda", "Fermentacao", "Lab_Caldo"]
+sheets = ["Moenda", "Fermentacao", "Caldo"]
 casos = {
     "Moenda_Vazao_p10_lag_0min":
-        "10º percentil de Vazao (Moenda), sem lag",
+        "valores baixos (P10) de Vazao (Moenda), sem lag",
     "Moenda_Temperatura_mean_abs_diff_lag_0min":
-        "variação média entre leituras de Temperatura (Moenda), sem lag",
+        "oscilação de Temperatura (Moenda), sem lag",
     "Fermentacao_pH_pct_fora_lag_0min":
         "% do tempo fora da faixa de pH (Fermentacao), sem lag",
-    "Brix_lab_lab_last_lag_240min":
-        "última análise de laboratório de Brix lab, com lag de 240 min (4 h antes)",
+    "Brix_per_last_lag_240min":
+        "última leitura de Brix, com lag de 240 min (4 h antes)",
     "Fermentacao_pH_area_abaixo_lag_480min":
         "severidade abaixo do limite de pH (Fermentacao), com lag de 480 min (8 h antes)",
     "Vazao_mean_lag_0min":          # sem prefixo de aba (1 aba só)
@@ -19,7 +19,7 @@ casos = {
     "Fermentacao_pH_pct_fora":      # sem lag (tabela de excursões)
         "% do tempo fora da faixa de pH (Fermentacao)",
     "Temperatura_std_lag_1d":       # legado em dias
-        "desvio padrão de Temperatura, com lag de 1 dia",
+        "instabilidade de Temperatura, com lag de 1 dia",
     "Nivel_mean_t2_lag_0min":
         "média no turno 08–16 de Nivel, sem lag",
 }

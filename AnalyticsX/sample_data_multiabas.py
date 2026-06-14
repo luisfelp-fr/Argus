@@ -5,13 +5,13 @@ Cria um arquivo com QUATRO abas:
   - ``Moenda``      (contínua, 1 min): Vazao, Temperatura, Pressao
   - ``Fermentacao`` (contínua, 5 min): pH, Nivel  — passo diferente p/ testar
                     a detecção por aba; pH com excursões abaixo de 4.8
-  - ``Lab_Caldo``   (laboratório, a cada 4 h): Brix_lab, Pol_lab — cada valor
-                    divulgado em T é a média de um processo oculto nas 4 h
-                    anteriores (semântica (T−4h, T])
+  - ``Caldo``       (periódica, a cada 4 h): Brix, Pol — cada valor informado
+                    em T é a média de um processo oculto nas 4 h anteriores
+                    (semântica (T−4h, T])
   - ``Alvo``        (a cada 8 h): Rendimento, com relações CONHECIDAS:
       + a·Vazao_mean (janela atual)
       − b·Temperatura_std (janela atual)
-      − c·Brix_lab da DIVULGAÇÃO ANTERIOR (efeito defasado de 240 min)
+      − c·Brix da LEITURA ANTERIOR (efeito defasado de 240 min)
       − d·minutos de pH < 4.8 na janela atual
       + ruído
 
@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 PH_LO = 4.8               # limite inferior crítico do pH (configure na UI)
-LAB_PERIOD_H = 4          # divulgação do laboratório a cada 4 h
+LAB_PERIOD_H = 4          # leitura do indicador periódico a cada 4 h
 TARGET_PERIOD_H = 8       # alvo divulgado a cada 8 h
 
 
@@ -74,9 +74,9 @@ def generate(days: int = 40, seed: int = 11):
         for i in range(n_win)
     ])
 
-    # ----------------------- Lab_Caldo (4 h) ---------------------------- #
-    # divulgações geradas como AR(1) entre análises: sinal forte por divulgação
-    # e baixa autocorrelação entre janelas (permite distinguir o lag correto)
+    # ----------------------- Caldo (periódico, 4 h) --------------------- #
+    # leituras geradas como AR(1): sinal forte por leitura e baixa
+    # autocorrelação entre janelas (permite distinguir o lag correto)
     def _ar1(mean: float, phi: float, sigma: float, n: int) -> np.ndarray:
         x = np.empty(n)
         x[0] = mean + rng.normal(0, sigma)
@@ -89,14 +89,14 @@ def generate(days: int = 40, seed: int = 11):
                               periods=total_min // lab_step, freq=f"{LAB_PERIOD_H}h")
     brix_lab = _ar1(18.0, 0.3, 0.35, len(lab_times))
     pol_lab = _ar1(14.5, 0.3, 0.30, len(lab_times))
-    lab = pd.DataFrame({"DataHora": lab_times, "Brix_lab": brix_lab, "Pol_lab": pol_lab})
+    lab = pd.DataFrame({"DataHora": lab_times, "Brix": brix_lab, "Pol": pol_lab})
 
     # ----------------------- Alvo (8 h) --------------------------------- #
     alvo_times = pd.date_range(start + pd.Timedelta(hours=TARGET_PERIOD_H),
                                periods=n_win, freq=f"{TARGET_PERIOD_H}h")
     rows = []
     for i, T in enumerate(alvo_times):
-        # divulgação de lab ANTERIOR à janela atual: última com T_lab <= T − 4 h
+        # leitura periódica ANTERIOR à janela atual: última com T_lab <= T − 4 h
         prev_pos = np.searchsorted(
             lab_times.values, np.datetime64(T - pd.Timedelta(hours=LAB_PERIOD_H)),
             side="right") - 1
@@ -105,7 +105,7 @@ def generate(days: int = 40, seed: int = 11):
             85.0
             + 0.060 * (vaz_levels[i] - 300.0)       # + vazão média (janela atual)
             - 1.200 * temp_stds[i]                   # − instabilidade térmica
-            - 4.000 * (brix_prev - 18.0)             # − Brix da divulgação ANTERIOR
+            - 4.000 * (brix_prev - 18.0)             # − Brix da LEITURA ANTERIOR
             - 0.010 * ph_out_min[i]                  # − minutos de pH < 4.8
             + rng.normal(0, 0.35)
         )
@@ -121,13 +121,13 @@ if __name__ == "__main__":
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         moenda.to_excel(writer, sheet_name="Moenda", index=False)
         fermentacao.to_excel(writer, sheet_name="Fermentacao", index=False)
-        lab.to_excel(writer, sheet_name="Lab_Caldo", index=False)
+        lab.to_excel(writer, sheet_name="Caldo", index=False)
         alvo.to_excel(writer, sheet_name="Alvo", index=False)
     print(f"Gerado: {out}")
     print(f"  Aba 'Moenda'      (continua, 1 min):  {len(moenda)} linhas")
     print(f"  Aba 'Fermentacao' (continua, 5 min):  {len(fermentacao)} linhas")
-    print(f"  Aba 'Lab_Caldo'   (laboratorio, 4 h): {len(lab)} divulgacoes")
+    print(f"  Aba 'Caldo'       (periodico, 4 h):   {len(lab)} leituras")
     print(f"  Aba 'Alvo'        (8 h):              {len(alvo)} leituras")
     print(f"  Limite a configurar: pH minimo = {PH_LO} (aba Fermentacao)")
     print("  Relacoes esperadas: +Vazao_mean (lag 0), -Temperatura_std (lag 0),")
-    print("    -Brix_lab divulgacao anterior (lag 240 min), -pH abaixo de 4.8 (lag 0)")
+    print("    -Brix leitura anterior (lag 240 min), -pH abaixo de 4.8 (lag 0)")
