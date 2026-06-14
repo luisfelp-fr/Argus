@@ -163,9 +163,12 @@ def render_seasonal_mode() -> None:
         )
         legend_df = analysis.suffix_legend_table()
         for cat in legend_df["Categoria"].unique():
-            sub = legend_df[legend_df["Categoria"] == cat].drop(columns="Categoria")
+            sub = (legend_df[legend_df["Categoria"] == cat]
+                   .drop(columns="Categoria").reset_index(drop=True))
             st.markdown(f"**{cat}**")
-            st.dataframe(sub, use_container_width=True, hide_index=True)
+            # st.table (em vez de st.dataframe) quebra o texto em várias linhas
+            # e não corta as descrições longas com reticências.
+            st.table(sub.style.hide(axis="index"))
         _attach_button("legenda_sufixos", "table", "Legenda dos sufixos das variáveis",
                        legend_df, "Legenda")
 
