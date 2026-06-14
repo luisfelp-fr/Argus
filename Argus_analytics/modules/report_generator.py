@@ -11,11 +11,51 @@ from __future__ import annotations
 
 import base64
 import io
+import re
+from html import escape as _html_escape
 
 import pandas as pd
 import streamlit as st
 
 from utils.helpers import now_str
+
+# Caracteres unicode que as fontes Type1 embutidas do reportlab (Latin-1) não
+# possuem — convertidos para equivalentes ASCII só no PDF (o HTML mantém o
+# unicode). Evita "quadrados" / glifos faltando no PDF.
+_PDF_REPL = {
+    "≤": "<=", "≥": ">=", "≠": "!=", "→": "->", "←": "<-",
+    "↑": " (sobe)", "↓": " (desce)", "≈": "~", "•": "-", "◄": "<",
+    "“": '"', "”": '"', "’": "'", "…": "...", "–": "-", "—": "-",
+}
+
+
+def _fmt_cell(v) -> str:
+    """Formata um valor de célula (arredonda floats, trata NaN)."""
+    if isinstance(v, float):
+        if pd.isna(v):
+            return ""
+        return f"{v:.4g}"
+    return str(v)
+
+
+def _md_to_html(text: str, br: str = "<br/>") -> str:
+    """Converte **negrito** -> <b>negrito</b> e quebras de linha, escapando o
+    restante (uso no HTML, mantém unicode)."""
+    s = _html_escape(str(text or ""))
+    s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+    return s.replace("\n", br)
+
+
+def _pdf_inline(text, allow_md: bool = False) -> str:
+    """Texto pronto para um Paragraph do reportlab: escapa XML, converte
+    **negrito**/quebras e troca unicode sem glifo por ASCII."""
+    s = _html_escape(text if isinstance(text, str) else _fmt_cell(text))
+    if allow_md:
+        s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+        s = s.replace("\n", "<br/>")
+    for k, v in _PDF_REPL.items():
+        s = s.replace(k, v)
+    return s.encode("latin-1", "replace").decode("latin-1")
 
 # Jinja2 (template do HTML)
 try:
@@ -107,19 +147,19 @@ HTML_TEMPLATE = """
       {{ thtml|safe }}
     {% endfor %}
 
-    {% if item.interpretation %}
-      <div class="interp"><strong>Interpretação:</strong><br>{{ item.interpretation|replace('\n','<br>')|safe }}</div>
+    {% if item.interpretation_html %}
+      <div class="interp"><strong>Interpretação:</strong><br>{{ item.interpretation_html|safe }}</div>
     {% endif %}
     {% endfor %}
 
     <h2>Conclusões principais</h2>
     <ul>
-      {% for c in conclusions %}<li>{{ c }}</li>{% endfor %}
+      {% for c in conclusions %}<li>{{ c|safe }}</li>{% endfor %}
     </ul>
 
     <h2>Recomendações práticas</h2>
     <ul>
-      {% for r in recommendations %}<li>{{ r }}</li>{% endfor %}
+      {% for r in recommendations %}<li>{{ r|safe }}</li>{% endfor %}
     </ul>
   </div>
   <div class="footer">
@@ -179,7 +219,7 @@ def build_html(items: list[dict], meta: dict) -> str:
             "variables": it.get("variables", {}),
             "params": it.get("params", {}),
             "timestamp": it.get("timestamp", ""),
-            "interpretation": it.get("interpretation", ""),
+            "interpretation_html": _md_to_html(it.get("interpretation", "")),
             "figures_html": [_fig_to_html(f) for f in it.get("figures", [])],
             "tables_html": {k: _table_to_html(v) for k, v in it.get("tables", {}).items()},
         })
@@ -188,10 +228,62 @@ def build_html(items: list[dict], meta: dict) -> str:
     # Plotly.js incluído uma única vez no <head> (via CDN); figuras usam include_plotlyjs=False
     return template.render(
         items=render_items,
-        conclusions=_build_conclusions(items),
-        recommendations=_build_recommendations(items),
+        conclusions=[_md_to_html(c) for c in _build_conclusions(items)],
+        recommendations=[_md_to_html(r) for r in _build_recommendations(items)],
         **meta,
     )
+
+
+_PDF_MAX_ROWS = 25
+_PDF_MAX_COLS = 12
+
+
+def _pdf_table(tdf: pd.DataFrame, avail_width: float):
+    """Monta uma tabela do reportlab que cabe na largura ``avail_width`` (retrato).
+
+    Usa células com Paragraph (quebra de linha automática), larguras de coluna
+    calculadas, cabeçalho repetido entre páginas e linhas zebradas. Retorna
+    ``(tabela, linhas_truncadas, colunas_truncadas)``.
+    """
+    cell_style = ParagraphStyle("aa_cell", fontName="Helvetica", fontSize=7.5,
+                                leading=9.5, textColor=colors.HexColor("#243B43"))
+    head_style = ParagraphStyle("aa_head", fontName="Helvetica-Bold", fontSize=7.5,
+                                leading=9.5, textColor=colors.white)
+    idx_style = ParagraphStyle("aa_idx", fontName="Helvetica-Bold", fontSize=7.5,
+                               leading=9.5, textColor=colors.HexColor("#0E4D64"))
+
+    cols = list(tdf.columns)
+    trunc_cols = len(cols) > _PDF_MAX_COLS
+    cols = cols[:_PDF_MAX_COLS]
+    sub = tdf[cols].head(_PDF_MAX_ROWS)
+    trunc_rows = len(tdf) > _PDF_MAX_ROWS
+
+    header = [Paragraph(_pdf_inline(tdf.index.name or ""), head_style)]
+    header += [Paragraph(_pdf_inline(c), head_style) for c in cols]
+    data = [header]
+    for ridx, row in sub.iterrows():
+        line = [Paragraph(_pdf_inline(ridx), idx_style)]
+        line += [Paragraph(_pdf_inline(v), cell_style) for v in row.values]
+        data.append(line)
+
+    ncols = len(cols) + 1
+    idx_frac = 0.20 if ncols <= 6 else 0.16 if ncols <= 9 else 0.13
+    idx_w = avail_width * idx_frac
+    other_w = (avail_width - idx_w) / (ncols - 1)
+    col_widths = [idx_w] + [other_w] * (ncols - 1)
+
+    tbl = RLTable(data, colWidths=col_widths, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0E4D64")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F1F6F8")]),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2E6")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+    ]))
+    return tbl, trunc_rows, trunc_cols
 
 
 def build_pdf(items: list[dict], meta: dict) -> bytes | None:
@@ -199,50 +291,87 @@ def build_pdf(items: list[dict], meta: dict) -> bytes | None:
     if not (_HAS_REPORTLAB and _HAS_KALEIDO):
         return None
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm,
+                            leftMargin=1.6 * cm, rightMargin=1.6 * cm)
+    avail = doc.width  # largura útil (retrato), já descontadas as margens
+
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("ArgusTitle", parent=styles["Title"],
                                  textColor=colors.HexColor("#0E4D64"))
     h2 = ParagraphStyle("ArgusH2", parent=styles["Heading2"],
                         textColor=colors.HexColor("#0E4D64"))
+    h4 = ParagraphStyle("ArgusH4", parent=styles["Heading4"],
+                        textColor=colors.HexColor("#1B98B5"))
+    body = ParagraphStyle("ArgusBody", parent=styles["Normal"], fontSize=10, leading=14)
+    muted = ParagraphStyle("ArgusMuted", parent=styles["Normal"], fontSize=8,
+                           textColor=colors.HexColor("#6B8A95"), spaceAfter=2)
+    interp = ParagraphStyle("ArgusInterp", parent=body, backColor=colors.HexColor("#FFF8EC"),
+                            borderPadding=6, spaceBefore=4, spaceAfter=4, leading=14)
+    bullet = ParagraphStyle("ArgusBullet", parent=body, leftIndent=14, bulletIndent=2,
+                            spaceAfter=4)
     story = []
 
+    # --- Capa ------------------------------------------------------------ #
     story.append(Paragraph("Argus Analytics", title_style))
     story.append(Paragraph("Relatório de Análise Estatística", styles["Heading3"]))
     story.append(Spacer(1, 0.5 * cm))
-    story.append(Paragraph(f"<b>Arquivo:</b> {meta['file_name']}", styles["Normal"]))
-    story.append(Paragraph(f"<b>Data:</b> {meta['report_date']}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Arquivo:</b> {_pdf_inline(meta['file_name'])}", body))
+    story.append(Paragraph(f"<b>Data:</b> {_pdf_inline(meta['report_date'])}", body))
     story.append(Paragraph(
-        f"<b>Base:</b> {meta['n_rows']} linhas × {meta['n_cols']} colunas", styles["Normal"]))
+        f"<b>Base:</b> {meta['n_rows']} linhas x {meta['n_cols']} colunas "
+        f"({meta['n_numeric']} numéricas, {meta['n_categorical']} categóricas, "
+        f"{meta['n_datetime']} data/hora)", body))
+    story.append(Paragraph(f"<b>Análises incluídas:</b> {len(items)}", body))
     story.append(PageBreak())
 
+    # --- Análises -------------------------------------------------------- #
     for idx, it in enumerate(items, 1):
-        story.append(Paragraph(f"{idx}. {it['name']}", h2))
-        if it.get("interpretation"):
-            story.append(Paragraph(it["interpretation"].replace("\n", "<br/>"), styles["Normal"]))
-        story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph(_pdf_inline(f"{idx}. {it['name']}"), h2))
+
+        chips = [f"{k}: {v}" for k, v in it.get("variables", {}).items()]
+        chips += [f"{k}: {v}" for k, v in it.get("params", {}).items()]
+        if chips:
+            story.append(Paragraph(_pdf_inline("  |  ".join(chips)), muted))
+        if it.get("timestamp"):
+            story.append(Paragraph(_pdf_inline("Gerado em " + it["timestamp"]), muted))
+        story.append(Spacer(1, 0.2 * cm))
+
         for fig in it.get("figures", []):
             try:
-                img_bytes = fig.to_image(format="png", width=900, height=450, scale=1)
-                story.append(RLImage(io.BytesIO(img_bytes), width=16 * cm, height=8 * cm))
+                img_bytes = fig.to_image(format="png", width=1000, height=480, scale=2)
+                story.append(RLImage(io.BytesIO(img_bytes), width=avail, height=avail * 0.48))
                 story.append(Spacer(1, 0.3 * cm))
             except Exception:
                 continue
+
         for tname, tdf in it.get("tables", {}).items():
-            story.append(Paragraph(tname, styles["Heading4"]))
-            data = [list(map(str, [""] + list(tdf.columns)))]
-            for ridx, row in tdf.head(20).iterrows():
-                data.append([str(ridx)] + [str(v) for v in row.values])
-            tbl = RLTable(data)
-            tbl.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0E4D64")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTSIZE", (0, 0), (-1, -1), 7),
-                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CCCCCC")),
-            ]))
+            story.append(Paragraph(_pdf_inline(tname), h4))
+            tbl, trunc_rows, trunc_cols = _pdf_table(tdf, avail)
             story.append(tbl)
+            notes = []
+            if trunc_rows:
+                notes.append(f"mostrando as primeiras {_PDF_MAX_ROWS} de {len(tdf)} linhas")
+            if trunc_cols:
+                notes.append(f"mostrando as primeiras {_PDF_MAX_COLS} de {len(tdf.columns)} colunas")
+            if notes:
+                story.append(Paragraph("(" + "; ".join(notes) + ")", muted))
             story.append(Spacer(1, 0.3 * cm))
+
+        if it.get("interpretation"):
+            story.append(Paragraph(
+                "<b>Interpretação:</b> " + _pdf_inline(it["interpretation"], allow_md=True),
+                interp))
+
         story.append(PageBreak())
+
+    # --- Conclusões e recomendações ------------------------------------- #
+    story.append(Paragraph("Conclusões principais", h2))
+    for c in _build_conclusions(items):
+        story.append(Paragraph(_pdf_inline(c, allow_md=True), bullet, bulletText="•"))
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(Paragraph("Recomendações práticas", h2))
+    for r in _build_recommendations(items):
+        story.append(Paragraph(_pdf_inline(r, allow_md=True), bullet, bulletText="•"))
 
     doc.build(story)
     return buffer.getvalue()
