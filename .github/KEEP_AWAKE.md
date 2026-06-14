@@ -9,20 +9,24 @@ Arquivos:
 - `.github/workflows/keep-awake.yml` — agendamento (cron) do GitHub Actions.
 - `.github/scripts/keep_awake.py` — abre a URL e acorda o app (Playwright/Chromium).
 
-## Passo único de configuração (obrigatório)
+## Configuração
 
-Informe a URL do seu app numa **variável do repositório**:
+A URL do app **já está fixada** no workflow:
+`https://argus-analytics.streamlit.app/`. Não é preciso fazer mais nada — o
+fluxo roda sozinho.
 
-1. No GitHub, vá em **Settings → Secrets and variables → Actions**.
-2. Abra a aba **Variables** e clique em **New repository variable**.
-3. Preencha:
-   - **Name:** `STREAMLIT_APP_URL`
-   - **Value:** a URL pública do app, por exemplo `https://seu-app.streamlit.app`
-4. Salve.
+Para testar na hora: aba **Actions → "Manter app Streamlit acordado" → Run
+workflow**. Cada execução guarda um screenshot (`status-screenshot`) por 3 dias,
+útil para conferir se o app está no ar.
 
-Pronto. O fluxo roda sozinho. Para testar na hora: aba **Actions → "Manter app
-Streamlit acordado" → Run workflow**. Cada execução guarda um screenshot
-(`status-screenshot`) por 3 dias, útil para conferir se o app está no ar.
+### Trocar a URL depois (opcional)
+
+Sem editar o arquivo, crie uma **variável de repositório** que tem prioridade
+sobre o valor fixo:
+
+1. **Settings → Secrets and variables → Actions → aba "Variables"**.
+2. **New repository variable** → **Name:** `STREAMLIT_APP_URL` →
+   **Value:** a nova URL.
 
 ## Observações
 

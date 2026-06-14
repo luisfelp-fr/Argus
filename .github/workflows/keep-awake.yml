@@ -3,10 +3,10 @@ name: Manter app Streamlit acordado
 # Visita o app periodicamente para que o Streamlit Community Cloud não o coloque
 # para dormir por inatividade — e o reativa caso já tenha dormido.
 #
-# PRÉ-REQUISITO (uma vez): defina a URL do app em
-#   Settings > Secrets and variables > Actions > aba "Variables" > New variable
-#   Nome:  STREAMLIT_APP_URL
-#   Valor: https://SEU-APP.streamlit.app
+# A URL do app já está fixada abaixo (https://argus-analytics.streamlit.app/).
+# Opcional: para trocar sem editar o arquivo, crie a variável de repositório
+# STREAMLIT_APP_URL (Settings > Secrets and variables > Actions > Variables) —
+# ela tem prioridade sobre o valor fixo.
 
 on:
   schedule:
@@ -41,7 +41,8 @@ jobs:
 
       - name: Visitar e acordar o app
         env:
-          APP_URL: ${{ vars.STREAMLIT_APP_URL }}
+          # Usa a variável de repositório se existir; senão, a URL fixa do app.
+          APP_URL: ${{ vars.STREAMLIT_APP_URL || 'https://argus-analytics.streamlit.app/' }}
         run: python .github/scripts/keep_awake.py
 
       - name: Salvar screenshot (depuração)
