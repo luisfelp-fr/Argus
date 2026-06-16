@@ -50,14 +50,18 @@ MAX_LAG = 480.0
 cont_lagged = analysis.add_lag_features_min(cont_feat, MAX_LAG, period_min)
 
 # ---------------------------------------------------------------- periodicos
+# Como no app: periodicas entram apenas no periodo atual (max_lag_min=0),
+# sem sufixo de lag e sem a variavel _last (desconsiderada).
 lab_vals, lab_period = analysis.parse_lab_sheet(sheets["Caldo"], "DataHora")
 print(f"Periodo do indicador periodico detectado: {lab_period:g} min (esperado 240)")
 assert abs(lab_period - 240) < 1
 
 lab_lagged = analysis.add_lab_lags(
-    lab_vals, lab_period, target_series.index, period_min, max_lag_min=MAX_LAG)
-print(f"Colunas periodicas geradas: {list(lab_lagged.columns)[:6]} ... "
-      f"({lab_lagged.shape[1]} no total)")
+    lab_vals, lab_period, target_series.index, period_min, max_lag_min=0.0)
+print(f"Colunas periodicas geradas: {list(lab_lagged.columns)}")
+assert not any("_last" in c for c in lab_lagged.columns), "_last deveria estar fora"
+assert not any("_lag_" in c for c in lab_lagged.columns), "periodicas sem sufixo de lag"
+assert "Brix_per_mean" in lab_lagged.columns
 
 # ---------------------------------------------------------------- merge + limpeza
 all_feat = cont_lagged.join(lab_lagged)
@@ -79,26 +83,19 @@ def _sr(var: str) -> float:
     return float(stat_idx.loc[var, "Spearman r"]) if var in stat_idx.index else float("nan")
 
 
-# A relação do Brix usa a ÚLTIMA leitura até T−240min → é a feature
-# ``per_last`` no lag 240 que a captura exatamente (a ``per_mean`` da janela de
-# 480 min mistura duas leituras e não discrimina o lag).
+# Período atual (sem defasagem) → colunas sem sufixo de lag.
+# A variável _last foi desconsiderada; o Brix periódico entra como _per_mean.
 checks = {
-    "Vazao_mean lag 0 (direta)": _sr("Moenda_Vazao_mean_lag_0min") > 0.3,
-    "Temperatura_std lag 0 (inversa)": _sr("Moenda_Temperatura_std_lag_0min") < -0.25,
-    "Brix last lag 240 (inversa)": _sr("Brix_per_last_lag_240min") < -0.3,
-    "Brix: lag 240 mais forte que lag 0 e 480": (
-        abs(_sr("Brix_per_last_lag_240min")) > abs(_sr("Brix_per_last_lag_0min"))
-        and abs(_sr("Brix_per_last_lag_240min")) > abs(_sr("Brix_per_last_lag_480min"))
-    ),
-    "pH pct_fora lag 0 (inversa)": _sr("Fermentacao_pH_pct_fora_lag_0min") < -0.3,
+    "Vazao_mean (direta)": _sr("Moenda_Vazao_mean") > 0.3,
+    "Temperatura_std (inversa)": _sr("Moenda_Temperatura_std") < -0.25,
+    "pH pct_fora (inversa)": _sr("Fermentacao_pH_pct_fora") < -0.3,
+    "sem coluna _lag_0min": not any("_lag_0min" in c for c in X.columns),
+    "sem coluna _last": not any("_last" in c for c in X.columns),
+    "Brix periodico presente (per_mean)": "Brix_per_mean" in X.columns,
 }
 print("\n== Relacoes conhecidas (sinal e forca do Spearman) ==")
 for k, ok in checks.items():
     print(f"  [{'OK' if ok else 'FALHOU'}] {k}")
-print("  Brix last lag 0 / 240 / 480:",
-      f"{_sr('Brix_per_last_lag_0min'):+.3f} /",
-      f"{_sr('Brix_per_last_lag_240min'):+.3f} /",
-      f"{_sr('Brix_per_last_lag_480min'):+.3f}")
 
 # ---------------------------------------------------------------- excursoes
 ferm = sheets["Fermentacao"]

@@ -1113,8 +1113,9 @@ def add_lag_features_min(
 ) -> pd.DataFrame:
     """Cria blocos de defasagem de PERÍODOS anteriores, com o máximo em minutos.
 
-    Nº de blocos = ``floor(max_lag_min / period_min)``. Rótulo ``{col}_lag_{m}min``
-    (``m = k·period_min``); ``lag_0min`` é o período atual.
+    Nº de blocos = ``floor(max_lag_min / period_min)``. O bloco do período ATUAL
+    mantém o nome original (sem sufixo); os blocos defasados recebem
+    ``{col}_lag_{m}min`` (``m = k·period_min``, m > 0).
     """
     df = period_df.sort_index()
     period_min = period_min if period_min and period_min > 0 else 1.0
@@ -1123,7 +1124,8 @@ def add_lag_features_min(
     for k in range(0, n_lags + 1):
         m = int(round(k * period_min))
         shifted = df.shift(k)
-        shifted.columns = [f"{c}_lag_{m}min" for c in df.columns]
+        shifted.columns = (list(df.columns) if m == 0
+                           else [f"{c}_lag_{m}min" for c in df.columns])
         frames.append(shifted)
     return pd.concat(frames, axis=1)
 
@@ -1682,8 +1684,7 @@ def lab_window_features(
     as leituras são deslocadas para FRENTE no tempo — a janela do alvo passa a
     "enxergar" o indicador periódico de ``lag_shift_min`` minutos atrás.
 
-    Por variável: ``{col}_per_mean`` (média ponderada pelo tempo),
-    ``{col}_per_last`` (última leitura dentro da janela), ``{col}_per_n``
+    Por variável: ``{col}_per_mean`` (média ponderada pelo tempo), ``{col}_per_n``
     (nº de leituras na janela) e, com limites ``{col: (lo, hi)}``:
     ``_per_pct_fora``, ``_per_min_abaixo/acima`` (minutos), ``_per_area_abaixo/
     acima`` (desvio × tempo). Sem std/cv/oscilações — seriam artificiais numa
@@ -1717,7 +1718,6 @@ def lab_window_features(
             arr = win[c].dropna().to_numpy(dtype=float)
             rec[f"{base}_per_mean"] = float(np.mean(arr)) if arr.size else np.nan
             dvals = disc[c].dropna()
-            rec[f"{base}_per_last"] = float(dvals.iloc[-1]) if len(dvals) else np.nan
             rec[f"{base}_per_n"] = int(len(dvals))
             if c in limits and arr.size:
                 lo, hi = limits[c]
@@ -1752,8 +1752,9 @@ def add_lab_lags(
     """Cria blocos de lag do indicador periódico em múltiplos do período entre leituras.
 
     ``k = 0..floor(max_lag_min / lab_period_min)``; cada bloco desloca as
-    leituras em ``k·lab_period_min`` minutos e rotula as colunas como
-    ``{col}_per_..._lag_{m}min`` (mesmo padrão reconhecido pelo diagnóstico).
+    leituras em ``k·lab_period_min`` minutos. O bloco do período ATUAL mantém o
+    nome original (sem sufixo); os defasados recebem ``{col}_per_..._lag_{m}min``
+    (m > 0, mesmo padrão reconhecido pelo diagnóstico).
     """
     lab_period_min = lab_period_min if lab_period_min and lab_period_min > 0 else 1.0
     n_lags = int(np.floor(max_lag_min / lab_period_min)) if max_lag_min > 0 else 0
@@ -1764,7 +1765,8 @@ def add_lab_lags(
             lab_vals, lab_period_min, anchors, period_min,
             limits=limits, lag_shift_min=float(m),
         )
-        feat.columns = [f"{c}_lag_{m}min" for c in feat.columns]
+        if m != 0:
+            feat.columns = [f"{c}_lag_{m}min" for c in feat.columns]
         frames.append(feat)
     return pd.concat(frames, axis=1)
 
@@ -1999,10 +2001,6 @@ SUFFIX_INFO: dict[str, tuple[str, str, str, str]] = {
                  "Média (ponderada pelo tempo) das leituras do indicador periódico vigentes "
                  "na janela — cada valor vale para a janela (T−x, T].",
                  "Nível médio do indicador periódico durante o período do alvo."),
-    "per_last": ("última leitura", "Indicadores periódicos",
-                 "Valor da última leitura do indicador periódico dentro da janela.",
-                 "Condição mais recente conhecida ao fechar o período; com defasagem, "
-                 "representa leituras de períodos anteriores (efeito defasado)."),
     "per_n": ("nº de leituras", "Indicadores periódicos",
               "Quantas leituras do indicador periódico caíram na janela.",
               "Baixo = período com pouca cobertura (resultado menos confiável)."),
@@ -2073,20 +2071,22 @@ def suffix_legend_table() -> pd.DataFrame:
 def humanize_variable(name: str, sheet_names: list[str] | None = None) -> str:
     """Converte um nome técnico em frase legível.
 
-    Ex.: ``Moenda_Vazao_p10_lag_0min`` → ``10º percentil de Vazao (Moenda), sem lag``.
+    Ex.: ``Moenda_Vazao_p10`` → ``10º percentil de Vazao (Moenda)``;
+    ``Brix_per_mean_lag_240min`` → ``média de Brix, com lag de 240 min (4 h antes)``.
+    Variáveis sem defasagem (período atual) NÃO recebem texto de lag.
     ``sheet_names`` (nomes das abas usadas como prefixo) permite separar a aba do
     indicador; sem ela, o prefixo permanece junto ao nome do indicador.
     """
     base = str(name)
 
-    # 1) defasagem
+    # 1) defasagem — só menciona quando há lag (m > 0); período atual fica sem texto
     lag_txt = ""
     m = re.search(r"_lag_(\d+)min$", base)
     if m:
         mins = int(m.group(1))
         base = base[: m.start()]
         if mins == 0:
-            lag_txt = ", sem lag"
+            lag_txt = ""
         elif mins % 60 == 0:
             h = mins // 60
             lag_txt = f", com lag de {mins} min ({h:g} h antes)"
@@ -2097,7 +2097,7 @@ def humanize_variable(name: str, sheet_names: list[str] | None = None) -> str:
         if d:
             dias = int(d.group(1))
             base = base[: d.start()]
-            lag_txt = ", sem lag (mesmo dia)" if dias == 0 else (
+            lag_txt = "" if dias == 0 else (
                 f", com lag de {dias} dia" + ("s" if dias > 1 else ""))
 
     # 2) sufixo estatístico

@@ -147,19 +147,19 @@ def render_seasonal_mode() -> None:
                           "a partir dos indicadores brutos. Esta aba explica como "
                           "ler o nome e o que cada sufixo significa.")
         st.markdown(
-            "Os nomes seguem o padrão **`[Aba_]Indicador_sufixo_lag_Xmin`**:\n\n"
+            "Os nomes seguem o padrão **`[Aba_]Indicador_sufixo[_lag_Xmin]`**:\n\n"
             "- **Aba** — nome da aba de origem (aparece só quando há mais de uma "
             "aba de variáveis contínuas, ex.: `Moenda_`);\n"
             "- **Indicador** — o nome da coluna na sua planilha (ex.: `Temperatura`);\n"
             "- **Sufixo** — a estatística calculada na janela do período (tabela abaixo);\n"
-            "- **`_lag_Xmin`** — defasagem: `lag_0min` é o período atual do alvo; "
-            "`lag_480min` é o valor da variável **480 minutos antes** (efeito "
-            "defasado). Para indicadores periódicos, o passo do lag é o intervalo "
-            "entre leituras.\n\n"
-            "**Exemplo:** `Moenda_Temperatura_std_lag_0min` = *instabilidade da "
-            "Temperatura (aba Moenda), no período atual* — mede o quanto o sinal "
-            "oscila; se aparece no topo do ranking com correlação negativa, a "
-            "instabilidade da temperatura está derrubando o alvo."
+            "- **`_lag_Xmin`** — defasagem, **só aparece quando há atraso**: "
+            "`_lag_480min` é o valor da variável **480 minutos antes** (efeito "
+            "defasado). **Sem esse sufixo = período atual** (sem defasagem). O "
+            "lag vale apenas para as variáveis contínuas.\n\n"
+            "**Exemplo:** `Moenda_Temperatura_std` = *instabilidade da Temperatura "
+            "(aba Moenda), no período atual* — mede o quanto o sinal oscila; se "
+            "aparece no topo do ranking com correlação negativa, a instabilidade "
+            "da temperatura está derrubando o alvo."
         )
         legend_df = analysis.suffix_legend_table()
         for cat in legend_df["Categoria"].unique():
@@ -752,8 +752,9 @@ def render_seasonal_mode() -> None:
                                "Violações de limite × indicador alvo",
                                exc_target, "Limites & Excursões")
 
-                # Boxplot do alvo: períodos com vs. sem violação
-                pct_cols = [c for c in X.columns if "_pct_fora" in c and "_lag_0min" in c]
+                # Boxplot do alvo: períodos com vs. sem violação (período atual)
+                pct_cols = [c for c in X.columns
+                            if "_pct_fora" in c and "_lag_" not in c]
                 if pct_cols:
                     sel_box = st.selectbox(
                         "Variável de violação (boxplot do alvo)", pct_cols,

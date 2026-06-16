@@ -70,12 +70,17 @@ assert res["excursion_summary"] is not None
 print(f"Resultados: {res['n_periodos']} periodos x {res['n_features']} variaveis")
 print("Texto do relatorio presente:", len(res["report_text"]), "chars")
 
-# Periodicas (Brix/Pol = sufixo _per_) NAO devem ter defasagem: so lag_0min
-per_cols = [c for c in res["X"].columns if "_per_" in c]
+# Periodicas (_per_) entram no periodo atual: SEM sufixo de lag nenhum.
+cols = list(res["X"].columns)
+per_cols = [c for c in cols if "_per_" in c]
 assert per_cols, "esperava colunas periodicas (_per_) na base"
-per_com_lag = [c for c in per_cols if "_lag_" in c and not c.endswith("_lag_0min")]
-assert not per_com_lag, f"periodicas nao deveriam ter defasagem: {per_com_lag[:5]}"
-print(f"Periodicas sem defasagem OK ({len(per_cols)} colunas, todas em lag 0)")
+assert not any("_lag_" in c for c in per_cols), \
+    f"periodicas nao deveriam ter sufixo de lag: {[c for c in per_cols if '_lag_' in c][:5]}"
+# _last desconsiderada e period atual sem sufixo _lag_0min em TODA a base
+assert not any("_last" in c for c in cols), "a variavel _last deveria estar fora"
+assert not any("_lag_0min" in c for c in cols), \
+    "periodo atual nao deve ter sufixo _lag_0min"
+print(f"Periodicas sem defasagem/_last OK ({len(per_cols)} colunas periodicas)")
 
 # rerun pos-processamento: abas de resultado renderizam sem excecao
 at.run()

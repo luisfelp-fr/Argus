@@ -45,9 +45,9 @@ segundo upload (fluxo de 2 bases preservado).
 2. **Instabilidade:** Δ médio entre leituras, taxa máxima de variação, nº de
    oscilações bruscas.
 3. **Periódicos alinhados ao alvo:** cada leitura é expandida na sua janela
-   `(T−x, T]` e agregada por período do alvo (média ponderada pelo tempo, última
-   leitura, nº de leituras). As variáveis periódicas entram apenas no **período
-   atual** — o filtro de lag (defasagem) vale só para as contínuas.
+   `(T−x, T]` e agregada por período do alvo (média ponderada pelo tempo e nº de
+   leituras). As variáveis periódicas entram apenas no **período atual** — o
+   filtro de lag (defasagem) vale só para as contínuas.
 4. **Limites críticos** (mín/máx por indicador, contínuas e periódicas): tempo e
    área fora de faixa como variáveis explicativas **+ análise de excursões** —
    eventos contíguos fora de faixa, linha do tempo, e teste de **Mann-Whitney U**
@@ -84,12 +84,11 @@ streamlit run app.py               # modo Sazonal: suba o arquivo, confirme a cl
                                    # limite pH minimo 4.8 (Fermentacao), Processar
 ```
 
-Espera-se confirmar no app: `Moenda_Vazao_mean_lag_0min` (direto),
-`Moenda_Temperatura_std_lag_0min` (inverso) e `Fermentacao_pH_pct_fora_lag_0min`
-(Mann-Whitney p < 0,05 na aba 🚦). As variáveis periódicas (`Brix`, `Pol`) entram
-apenas no período atual, sem defasagem. *(O `_test_multiabas.py` ainda exercita a
-defasagem de periódicas em nível de função — `Brix_per_last_lag_240min` — para
-validar o alinhamento temporal de `add_lab_lags`.)*
+Espera-se confirmar no app: `Moenda_Vazao_mean` (direto), `Moenda_Temperatura_std`
+(inverso) e `Fermentacao_pH_pct_fora` (Mann-Whitney p < 0,05 na aba 🚦). As
+variáveis do **período atual não recebem sufixo de lag**; só os blocos defasados
+das contínuas ganham `_lag_Xmin`. As periódicas (`Brix`, `Pol`) entram apenas no
+período atual, como `Brix_per_mean` (a variável `_last` foi desconsiderada).
 
 ---
 
