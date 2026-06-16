@@ -5,6 +5,10 @@ conhecidas aparecem no topo dos rankings:
   +Vazao_mean (lag 0), -Temperatura_std (lag 0),
   -Brix da leitura anterior (lag 240 min), -pH < 4.8 (lag 0, pct_fora).
 
+Nota: este teste exercita ``add_lab_lags`` COM defasagem para validar o
+alinhamento temporal da função. No APP, as variáveis periódicas entram
+apenas no período atual (sem lag) — ver ``_test_ui_apptest.py``.
+
 Uso: python _test_multiabas.py
 """
 

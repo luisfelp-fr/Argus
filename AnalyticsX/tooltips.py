@@ -59,9 +59,9 @@ HELP: dict[str, str] = {
         "períodos do alvo."
     ),
     "lab_lag": (
-        "Lag do indicador periódico: defasagens criadas em múltiplos do intervalo entre "
-        "leituras (ex.: leitura a cada 4 h → lags de 0, 240, 480 min...), até o lag máximo "
-        "definido. Permite captar efeitos da leitura anterior sobre o período atual do alvo."
+        "Indicadores periódicos entram apenas no **período atual** do alvo, sem "
+        "defasagem. O filtro de lag (em minutos) é aplicado somente às variáveis "
+        "contínuas."
     ),
     # ----------------------------------------------------------------- #
     # Modelos e explicabilidade
@@ -197,7 +197,7 @@ def glossario_markdown() -> str:
         "\n"
         "#### 🔁 Indicadores periódicos (laboratório ou leituras a cada x horas)\n"
         f"- **Janela da leitura** — {HELP['lab_janela']}\n"
-        f"- **Lag do indicador periódico** — {HELP['lab_lag']}\n"
+        f"- **Sem defasagem** — {HELP['lab_lag']}\n"
         "\n"
         "#### 🧩 Outros conceitos\n"
         f"- **Lag (minutos)** — {HELP['lag']}\n"

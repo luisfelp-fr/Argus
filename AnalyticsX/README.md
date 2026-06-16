@@ -46,13 +46,14 @@ segundo upload (fluxo de 2 bases preservado).
    oscilações bruscas.
 3. **Periódicos alinhados ao alvo:** cada leitura é expandida na sua janela
    `(T−x, T]` e agregada por período do alvo (média ponderada pelo tempo, última
-   leitura, nº de leituras), com **lags em múltiplos do intervalo entre
-   leituras**.
+   leitura, nº de leituras). As variáveis periódicas entram apenas no **período
+   atual** — o filtro de lag (defasagem) vale só para as contínuas.
 4. **Limites críticos** (mín/máx por indicador, contínuas e periódicas): tempo e
    área fora de faixa como variáveis explicativas **+ análise de excursões** —
    eventos contíguos fora de faixa, linha do tempo, e teste de **Mann-Whitney U**
    comparando o alvo em períodos com × sem violação (aba 🚦).
-5. **Lag em minutos** das contínuas: blocos de períodos anteriores até o máximo.
+5. **Lag em minutos** (apenas das contínuas): blocos de períodos anteriores até
+   o máximo. As periódicas não recebem defasagem.
 6. **Turnos opcionais:** média/desvio por 00–08, 08–16, 16–24.
 7. **Junta com o alvo**, limpa a base (colunas constantes, nulos, padroniza nomes).
 8. **Estatística:** Pearson e Spearman (com *p-value*) e *mutual information*.
@@ -83,9 +84,12 @@ streamlit run app.py               # modo Sazonal: suba o arquivo, confirme a cl
                                    # limite pH minimo 4.8 (Fermentacao), Processar
 ```
 
-Espera-se confirmar: `Moenda_Vazao_mean_lag_0min` (direto), `Moenda_Temperatura_std_lag_0min`
-(inverso), `Brix_per_last_lag_240min` (efeito defasado da leitura periódica anterior)
-e `Fermentacao_pH_pct_fora_lag_0min` (Mann-Whitney p < 0,05 na aba 🚦).
+Espera-se confirmar no app: `Moenda_Vazao_mean_lag_0min` (direto),
+`Moenda_Temperatura_std_lag_0min` (inverso) e `Fermentacao_pH_pct_fora_lag_0min`
+(Mann-Whitney p < 0,05 na aba 🚦). As variáveis periódicas (`Brix`, `Pol`) entram
+apenas no período atual, sem defasagem. *(O `_test_multiabas.py` ainda exercita a
+defasagem de periódicas em nível de função — `Brix_per_last_lag_240min` — para
+validar o alinhamento temporal de `add_lab_lags`.)*
 
 ---
 

@@ -392,16 +392,14 @@ def render_seasonal_mode() -> None:
 
         n_blocks = int(np.floor(max_lag_min / period_min)) if period_min else 0
         caption = (
-            f"Serão criados **{n_blocks + 1} bloco(s)** de defasagem das contínuas "
-            f"(lag 0 + {n_blocks} período(s) anterior(es)), rotulados em minutos."
+            f"O lag se aplica às variáveis **contínuas**: serão criados "
+            f"**{n_blocks + 1} bloco(s)** de defasagem (lag 0 + {n_blocks} "
+            f"período(s) anterior(es)), rotulados em minutos."
         )
-        for sh in lab_sheets:
-            lp = sh.get("period_min")
-            if lp:
-                n_lab = int(np.floor(max_lag_min / lp))
-                caption += (f" Periódico **{sh['name']}**: {n_lab + 1} bloco(s) "
-                            f"de lag (passo = {lp:g} min).")
-        st.caption(caption, help=HELP["lab_lag"] if lab_sheets else None)
+        if lab_sheets:
+            caption += (" As variáveis **periódicas** entram apenas no **período "
+                        "atual** (sem defasagem).")
+        st.caption(caption)
         use_turnos = st.toggle(
             "Criar variáveis por turno (00–08, 08–16, 16–24)", value=False,
             help="Útil quando o período é diário; pouco relevante para períodos curtos.",
@@ -468,7 +466,8 @@ def render_seasonal_mode() -> None:
                         period_feat, float(max_lag_min), float(period_min)
                     ) if not period_feat.empty else period_feat
 
-                    # 2) Periódicos: alinha às janelas do alvo + lags próprios
+                    # 2) Periódicos: alinha às janelas do alvo, SEM defasagem
+                    #    (apenas o período atual — não se aplica filtro de lag).
                     lab_period_by_sheet: dict[str, float] = {}
                     lab_frames: list[pd.DataFrame] = []
                     prefix_lab = len(lab_sheets) > 1
@@ -484,7 +483,7 @@ def render_seasonal_mode() -> None:
                         lab_period_by_sheet[sh["name"]] = lab_period
                         lab_frames.append(analysis.add_lab_lags(
                             lab_vals, lab_period, target_series.index,
-                            float(period_min), max_lag_min=float(max_lag_min),
+                            float(period_min), max_lag_min=0.0,
                             limits=lab_limits,
                         ))
                     all_feat = lagged

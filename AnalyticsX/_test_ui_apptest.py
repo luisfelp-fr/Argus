@@ -70,6 +70,13 @@ assert res["excursion_summary"] is not None
 print(f"Resultados: {res['n_periodos']} periodos x {res['n_features']} variaveis")
 print("Texto do relatorio presente:", len(res["report_text"]), "chars")
 
+# Periodicas (Brix/Pol = sufixo _per_) NAO devem ter defasagem: so lag_0min
+per_cols = [c for c in res["X"].columns if "_per_" in c]
+assert per_cols, "esperava colunas periodicas (_per_) na base"
+per_com_lag = [c for c in per_cols if "_lag_" in c and not c.endswith("_lag_0min")]
+assert not per_com_lag, f"periodicas nao deveriam ter defasagem: {per_com_lag[:5]}"
+print(f"Periodicas sem defasagem OK ({len(per_cols)} colunas, todas em lag 0)")
+
 # rerun pos-processamento: abas de resultado renderizam sem excecao
 at.run()
 assert not at.exception, f"excecao ao renderizar resultados: {at.exception}"
