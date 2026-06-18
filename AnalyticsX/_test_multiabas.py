@@ -126,4 +126,31 @@ print("\n== Texto do relatorio ==")
 print(texto)
 
 assert all(checks.values()), f"relacoes nao confirmadas: {checks}"
+
+# ---------------------------------------------------------------- ranking por indicador
+SHEETS = ["Moenda", "Fermentacao", "Caldo"]
+assert analysis.base_indicator("Moenda_Vazao_mean", SHEETS) == ("Moenda_Vazao", "Vazao (Moenda)")
+assert analysis.base_indicator("Brix_per_mean_lag_240min", SHEETS)[0] == "Brix"
+
+ind_rank = analysis.indicator_ranking(consolidated, SHEETS)
+print("\n== Ranking por indicador (limpo) ==")
+print(ind_rank.to_string(index=False))
+assert list(ind_rank.columns) == ["Indicador", "Impacto", "Nº métricas"]
+assert not ind_rank.empty
+assert ind_rank["Impacto"].is_monotonic_decreasing
+# nomes limpos: sem sufixo/lag/metrica no rotulo do indicador
+assert not ind_rank["Indicador"].str.contains(r"_lag_|_mean|_std|_per_|_pct_fora",
+                                               regex=True).any()
+assert ind_rank["Indicador"].str.contains("Vazao").any()
+print(f"[OK] {len(ind_rank)} indicadores, nomes limpos, ordenado por impacto")
+
+# ---------------------------------------------------------------- drill-down (cadeia)
+dr = analysis.drilldown_ranking(X, "Moenda_Vazao_mean", SHEETS)
+print("\n== Drill-down: o que impacta Vazao (Moenda) ==")
+print(dr.head(8).to_string(index=False))
+assert list(dr.columns) == ["Indicador", "Impacto", "Nº métricas"]
+assert not dr.empty, "drill-down deveria retornar drivers"
+assert not dr["Indicador"].str.contains("Vazao").any(), "nao deve se autoexplicar"
+print("[OK] drill-down nao se autoexplica e retorna ranking limpo")
+
 print("\nTUDO OK")

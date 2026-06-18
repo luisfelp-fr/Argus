@@ -2125,6 +2125,113 @@ def humanize_variable(name: str, sheet_names: list[str] | None = None) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# B.6  Ranking por INDICADOR (sem sufixo/lag/métrica) e investigação em cadeia
+# --------------------------------------------------------------------------- #
+def base_indicator(name: str, sheet_names: list[str] | None = None) -> tuple[str, str]:
+    """Reduz um nome de feature ao seu indicador-base.
+
+    Retorna ``(key, display)``: ``key`` agrupa as métricas/defasagens do mesmo
+    indicador (mantém o prefixo da aba, ex.: ``Moenda_Vazao``); ``display`` é o
+    nome limpo para exibição (ex.: ``Vazao (Moenda)``), sem sufixo estatístico,
+    sem lag e sem o tipo de métrica.
+    """
+    base = str(name)
+    # remove a defasagem (período atual não tem sufixo)
+    m = re.search(r"_lag_(\d+)min$", base)
+    if m:
+        base = base[: m.start()]
+    else:
+        d = re.search(r"_lag_(\d+)d$", base)
+        if d:
+            base = base[: d.start()]
+    # remove o sufixo estatístico (mais longo primeiro)
+    for suf in _SUFFIXES_BY_LEN:
+        if base.endswith(f"_{suf}"):
+            base = base[: -(len(suf) + 1)]
+            break
+    key = base
+    # separa o prefixo de aba para o display
+    aba_txt = ""
+    if sheet_names:
+        for sh in sorted(sheet_names, key=len, reverse=True):
+            tok = _clean_token(sh)
+            if base.startswith(f"{tok}_"):
+                base = base[len(tok) + 1:]
+                aba_txt = f" ({sh})"
+                break
+    indicador = base.replace("_", " ").strip() or str(name)
+    return key, f"{indicador}{aba_txt}"
+
+
+def indicator_ranking(
+    consolidated: pd.DataFrame, sheet_names: list[str] | None = None
+) -> pd.DataFrame:
+    """Agrega o ranking consolidado (por feature) ao nível de INDICADOR.
+
+    Cada indicador recebe como ``Impacto`` o **máximo** do "Score consolidado"
+    entre as suas métricas/defasagens (a evidência mais forte). Retorna
+    ``["Indicador", "Impacto", "Nº métricas"]`` ordenado do maior impacto ao menor.
+    """
+    cols = ["Indicador", "Impacto", "Nº métricas"]
+    if (consolidated is None or consolidated.empty
+            or "Score consolidado" not in consolidated.columns):
+        return pd.DataFrame(columns=cols)
+    df = consolidated.copy()
+    pairs = [base_indicator(v, sheet_names) for v in df["Variável"]]
+    df["__key"] = [k for k, _ in pairs]
+    df["__disp"] = [d for _, d in pairs]
+    agg = df.groupby("__key", sort=False).agg(
+        _disp=("__disp", "first"),
+        _imp=("Score consolidado", "max"),
+        _n=("__disp", "size"),
+    )
+    out = pd.DataFrame({
+        "Indicador": agg["_disp"].values,
+        "Impacto": agg["_imp"].round(4).values,
+        "Nº métricas": agg["_n"].astype(int).values,
+    })
+    return out.sort_values("Impacto", ascending=False).reset_index(drop=True)
+
+
+def drilldown_ranking(
+    X: pd.DataFrame, target_col: str, sheet_names: list[str] | None = None,
+    *, model_type: str | None = None, run_shap: bool = False,
+) -> pd.DataFrame:
+    """Refaz a análise usando ``target_col`` (o indicador raiz) como novo alvo.
+
+    Trata ``target_col`` (tipicamente a média/nível do indicador escolhido) como
+    o novo indicador a explicar, remove todas as colunas do próprio indicador
+    (métricas e defasagens — evita autoexplicação) e ranqueia quais OUTROS
+    indicadores mais impactam nele. Reaproveita ``statistical_ranking`` e, se
+    ``model_type`` for informado (mesma profundidade do run principal),
+    ``train_model``/``shap_importance``. Retorna o ranking por indicador.
+    """
+    empty = pd.DataFrame(columns=["Indicador", "Impacto", "Nº métricas"])
+    if target_col not in X.columns:
+        return empty
+    y2 = X[target_col].astype(float)
+    tgt_key, _ = base_indicator(target_col, sheet_names)
+    drop_cols = [c for c in X.columns
+                 if base_indicator(c, sheet_names)[0] == tgt_key]
+    X2 = X.drop(columns=drop_cols)
+    if X2.shape[1] == 0:
+        return empty
+
+    stat2 = statistical_ranking(X2, y2)
+    importances = shap_imp = None
+    if model_type:
+        try:
+            mr = train_model(X2, y2, model_type=model_type)
+            importances = mr.importances
+            if run_shap:
+                shap_imp = shap_importance(mr, X2)
+        except Exception:  # noqa: BLE001 - drill-down degrada para só estatística
+            importances = shap_imp = None
+    cons2 = consolidated_ranking(stat2, importances, shap_imp)
+    return indicator_ranking(cons2, sheet_names)
+
+
+# --------------------------------------------------------------------------- #
 # B.6  Texto do relatório final (por que estas variáveis são as principais)
 # --------------------------------------------------------------------------- #
 def _fmt_lag_legivel(name: str) -> str | None:

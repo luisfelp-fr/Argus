@@ -112,6 +112,30 @@ def _attach_button(key: str, kind: str, title: str, payload, source_tab: str) ->
         st.rerun()
 
 
+def _repr_col(X, key: str, sheet_names) -> str:
+    """Coluna que representa o indicador raiz (valor médio/nível, sem variações
+    estatísticas). Preferência: média; senão a de maior variância; senão a 1ª."""
+    cols = [c for c in X.columns if analysis.base_indicator(c, sheet_names)[0] == key]
+    for cand in (f"{key}_mean", f"{key}_per_mean"):
+        if cand in cols:
+            return cand
+    if not cols:
+        return ""
+    try:
+        return X[cols].var(numeric_only=True).idxmax()
+    except Exception:  # noqa: BLE001
+        return cols[0]
+
+
+def _cached_drilldown(X, target_col, sheet_names, model_type, run_shap):
+    """drilldown_ranking com cache por coluna-alvo (não recomputa a cada rerun)."""
+    cache = st.session_state.setdefault("v2_chain_cache", {})
+    if target_col not in cache:
+        cache[target_col] = analysis.drilldown_ranking(
+            X, target_col, sheet_names, model_type=model_type, run_shap=run_shap)
+    return cache[target_col]
+
+
 # --------------------------------------------------------------------------- #
 # Fluxo principal
 # --------------------------------------------------------------------------- #
@@ -588,8 +612,14 @@ def render_seasonal_mode() -> None:
                     "excursion_summary": exc_summary,
                     "excursion_vs_target": exc_target,
                     "raw_series": raw_series,
+                    "all_sheet_names": all_sheet_names,
+                    "model_type": (model_type if run_model else None),
+                    "run_shap": run_shap,
                     "n_periodos": len(clean), "n_features": X.shape[1],
                 }
+                # reinicia a investigação em cadeia ao reprocessar
+                st.session_state.pop("v2_chain", None)
+                st.session_state.pop("v2_chain_cache", None)
                 # texto editável do relatório recomeça do texto automático
                 st.session_state["v2_report_text_edit"] = report_text
                 st.success(
@@ -612,6 +642,7 @@ def render_seasonal_mode() -> None:
     model_result = res["model"]
     shap_imp = res["shap"]
     consolidated = res["consolidated"]
+    sheet_names = res.get("all_sheet_names")
 
     # ===================================================================== #
     # ABA 2 — Base por Período
@@ -834,23 +865,116 @@ def render_seasonal_mode() -> None:
         if consolidated.empty:
             st.warning("Sem ranking consolidado disponível.")
         else:
-            st.subheader("🏆 Ranking consolidado", help=HELP["score_consolidado"])
-            st.caption(
-                "Combina Spearman, Mutual Information, importância do modelo e SHAP "
-                "(quando disponíveis), normalizados e somados no **Score consolidado**."
-            )
-            st.dataframe(consolidated.round(4), use_container_width=True, hide_index=True)
-            _attach_button("rank_consolidado", "table", "Ranking consolidado",
-                           consolidated.round(4), "Ranking Consolidado")
-            fig_cons = _bar_rank(consolidated.set_index("Variável")["Score consolidado"],
-                                 "Score consolidado", "Score", color="Purples")
-            st.plotly_chart(fig_cons, use_container_width=True, key="v2_bar_consolidado")
-            _attach_button("fig_consolidado", "figure", "Score consolidado",
-                           fig_cons, "Ranking Consolidado")
+            # --- Ranking LIMPO por indicador (primário) --------------------- #
+            ind_rank = analysis.indicator_ranking(consolidated, sheet_names)
+            st.subheader("🏆 Indicadores que mais impactaram o alvo",
+                         help="Impacto consolidado por indicador (a evidência mais "
+                              "forte entre as métricas e defasagens dele), sem "
+                              "sufixos nem tipo de métrica.")
+            st.dataframe(ind_rank, use_container_width=True, hide_index=True)
+            _attach_button("rank_indicador", "table",
+                           "Indicadores que mais impactaram o alvo",
+                           ind_rank, "Ranking Consolidado")
+            if not ind_rank.empty:
+                fig_ind = _bar_rank(ind_rank.set_index("Indicador")["Impacto"],
+                                    "Impacto por indicador", "Impacto (0–1)",
+                                    color="Purples")
+                st.plotly_chart(fig_ind, use_container_width=True, key="v2_bar_indicador")
+                _attach_button("fig_indicador", "figure", "Impacto por indicador",
+                               fig_ind, "Ranking Consolidado")
+
+            with st.expander("🔬 Detalhe por métrica (variáveis derivadas)"):
+                st.caption(
+                    "Combina Spearman, Mutual Information, importância do modelo e "
+                    "SHAP (quando disponíveis), normalizados no **Score consolidado**."
+                )
+                st.dataframe(consolidated.round(4), use_container_width=True,
+                             hide_index=True)
+                _attach_button("rank_consolidado", "table", "Ranking consolidado",
+                               consolidated.round(4), "Ranking Consolidado")
+                fig_cons = _bar_rank(
+                    consolidated.set_index("Variável")["Score consolidado"],
+                    "Score consolidado", "Score", color="Purples")
+                st.plotly_chart(fig_cons, use_container_width=True,
+                                key="v2_bar_consolidado")
+                _attach_button("fig_consolidado", "figure", "Score consolidado",
+                               fig_cons, "Ranking Consolidado")
+
             st.subheader("🧭 Diagnóstico gerencial")
             st.info(res["diag"])
             _attach_button("diag_texto", "text", "Diagnóstico gerencial",
                            res["diag"], "Ranking Consolidado")
+
+            # --- Investigação causa-efeito em cadeia ------------------------ #
+            st.divider()
+            st.subheader("🔗 Investigação em cadeia (causa e efeito)",
+                         help="Escolha um indicador de alto impacto e refaça a "
+                              "análise usando-o como novo alvo (o valor do "
+                              "indicador, sem variações estatísticas), para "
+                              "descobrir o que impactou nele. Encadeie quantas "
+                              "vezes quiser.")
+            st.caption("A cada passo, o indicador escolhido vira o novo alvo e a "
+                       "análise é refeita com as demais variáveis.")
+
+            chain = st.session_state.setdefault("v2_chain", [
+                {"label": "Alvo principal", "col": None, "ranking": ind_rank}])
+            chain[0]["ranking"] = ind_rank   # objeto novo a cada rerun
+
+            st.markdown("**Cadeia:** " + "  →  ".join(
+                f"`{s['label']}`" for s in chain))
+
+            cur = chain[-1]
+            depth = len(chain)
+            cur_rank = cur["ranking"]
+            if cur_rank is None or cur_rank.empty:
+                st.info("Sem drivers com evidência suficiente neste nível.")
+            else:
+                tgt_y_label = ("o indicador alvo" if cur["col"] is None
+                               else analysis.humanize_variable(cur["col"], sheet_names))
+                sel = st.selectbox(
+                    f"Indicador para investigar (o que impactou em **{tgt_y_label}**):",
+                    cur_rank["Indicador"].tolist(), key=f"v2_chain_sel_{depth}")
+                if st.button("🔎 Investigar este indicador", type="primary",
+                             key=f"v2_chain_go_{depth}"):
+                    key_by_disp = {}
+                    for c in X.columns:
+                        k, d = analysis.base_indicator(c, sheet_names)
+                        key_by_disp.setdefault(d, k)
+                    tgt_key = key_by_disp.get(sel)
+                    target_col = _repr_col(X, tgt_key, sheet_names) if tgt_key else ""
+                    if not target_col:
+                        st.warning("Não foi possível localizar a série deste indicador.")
+                    else:
+                        with st.spinner("Refazendo a análise com o novo alvo..."):
+                            ranking = _cached_drilldown(
+                                X, target_col, sheet_names,
+                                res.get("model_type"), res.get("run_shap", False))
+                        st.session_state["v2_chain"].append(
+                            {"label": sel, "col": target_col, "ranking": ranking})
+                        st.rerun()
+
+            if depth > 1:
+                cb1, cb2 = st.columns(2)
+                if cb1.button("↩️ Voltar um nível", key="v2_chain_back"):
+                    st.session_state["v2_chain"].pop()
+                    st.rerun()
+                if cb2.button("🔄 Reiniciar investigação", key="v2_chain_reset"):
+                    st.session_state["v2_chain"] = st.session_state["v2_chain"][:1]
+                    st.rerun()
+
+            # dispersão: indicador escolhido no passo atual × alvo do passo
+            if depth > 1 and cur["col"] in X.columns:
+                prev = chain[-2]
+                y_ser = y if prev["col"] is None else X[prev["col"]]
+                yname = ("Indicador alvo" if prev["col"] is None
+                         else analysis.humanize_variable(prev["col"], sheet_names))
+                xname = analysis.humanize_variable(cur["col"], sheet_names)
+                fig_chain = _fig_scatter(X[cur["col"]], y_ser, xname, yname)
+                st.plotly_chart(fig_chain, use_container_width=True,
+                                key=f"v2_chain_scatter_{depth}")
+                _attach_button(f"fig_chain_{analysis._clean_token(cur['label'])}",
+                               "figure", f"Cadeia: {xname} × {yname}",
+                               fig_chain, "Ranking Consolidado")
 
     # ===================================================================== #
     # ABA 6 — Diagnóstico do Período

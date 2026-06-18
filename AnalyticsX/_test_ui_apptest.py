@@ -86,4 +86,29 @@ print(f"Periodicas sem defasagem/_last OK ({len(per_cols)} colunas periodicas)")
 at.run()
 assert not at.exception, f"excecao ao renderizar resultados: {at.exception}"
 print("Render das abas de resultado OK")
+
+# ranking por indicador + estado da cadeia
+assert res.get("all_sheet_names"), "all_sheet_names deveria estar em v2_results"
+chain = at.session_state["v2_chain"]
+assert len(chain) == 1 and chain[0]["col"] is None, "cadeia comeca no alvo principal"
+ind0 = chain[0]["ranking"]
+assert list(ind0.columns) == ["Indicador", "Impacto", "Nº métricas"]
+assert not ind0["Indicador"].str.contains(r"_lag_|_mean|_std|_per_", regex=True).any()
+print(f"Ranking por indicador OK ({len(ind0)} indicadores limpos)")
+
+# push: investigar o 1o indicador -> cadeia cresce para 2
+at.selectbox(key="v2_chain_sel_1").select(ind0["Indicador"].iloc[0])
+at.run()
+at.button(key="v2_chain_go_1").click()
+at.run()
+assert not at.exception, f"excecao no drill-down: {at.exception}"
+assert len(at.session_state["v2_chain"]) == 2, "cadeia deveria ter 2 passos"
+print(f"Drill-down OK (passo 2: investigando '{at.session_state['v2_chain'][1]['label']}')")
+
+# pop: voltar um nivel -> cadeia volta para 1
+at.button(key="v2_chain_back").click()
+at.run()
+assert not at.exception, f"excecao ao voltar: {at.exception}"
+assert len(at.session_state["v2_chain"]) == 1, "cadeia deveria voltar a 1 passo"
+print("Voltar um nivel OK")
 print("TUDO OK")
