@@ -245,6 +245,15 @@ def interpret_descriptive(name: str, mean: float, median: float, cv: float) -> s
                  "aproximadamente simétrica"
                  if abs(mean - median) <= 0.1 * (abs(mean) + 1e-9) else
                  "há diferença entre média e mediana, sugerindo assimetria")
+    # CV pode ser indefinido (NaN) quando a média está próxima de zero — nesse
+    # caso a dispersão relativa não se aplica e não deve ser classificada.
+    if cv != cv:  # NaN
+        return (
+            f"Para **{name}**, o valor típico gira em torno de {mean:.4g} "
+            f"(mediana {median:.4g}); {skew_note}. O coeficiente de variação não se "
+            "aplica aqui porque a média está próxima de zero — avalie a dispersão "
+            "pelo **desvio padrão** ou pela amplitude."
+        )
     disp = ("baixa dispersão" if cv < 15 else
             "dispersão moderada" if cv < 30 else "alta dispersão")
     return (
@@ -255,6 +264,9 @@ def interpret_descriptive(name: str, mean: float, median: float, cv: float) -> s
 
 
 def interpret_skewness(skew: float) -> str:
+    if skew != skew:  # NaN — variável praticamente constante
+        return ("A variável é praticamente **constante** (sem variação), então "
+                "assimetria e curtose não se aplicam.")
     if abs(skew) < 0.5:
         return "A distribuição é aproximadamente **simétrica**."
     side = "direita (cauda longa para valores altos)" if skew > 0 else "esquerda (cauda longa para valores baixos)"

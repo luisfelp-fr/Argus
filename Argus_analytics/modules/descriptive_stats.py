@@ -27,7 +27,11 @@ def describe_series(s: pd.Series) -> dict:
     mean = float(valid.mean())
     std = float(valid.std(ddof=1)) if n > 1 else 0.0
     q1, med, q3 = (float(valid.quantile(q)) for q in (0.25, 0.5, 0.75))
-    cv = (std / mean * 100) if mean != 0 else float("nan")
+    # O CV (dispersão relativa) só é confiável quando a média está claramente
+    # afastada de zero. Perto de zero ele explode e perde significado, então o
+    # tratamos como indefinido (NaN) — vale tanto para média exatamente 0 quanto
+    # numericamente ~0 (ex.: variáveis simétricas em torno de zero).
+    cv = std / mean * 100 if abs(mean) > 1e-9 * (std + 1e-12) else float("nan")
     return {
         "Média": mean,
         "Mediana": med,
@@ -84,7 +88,8 @@ def render(state) -> None:
             m[1].metric("Mediana", f"{stats['Mediana']:.4g}", help=GLOSSARY["mediana"])
             m[2].metric("Desvio padrão", f"{stats['Desvio padrão']:.4g}",
                         help=GLOSSARY["desvio_padrao"])
-            m[3].metric("CV (%)", f"{stats['Coef. variação (%)']:.1f}", help=GLOSSARY["cv"])
+            _cv = stats["Coef. variação (%)"]
+            m[3].metric("CV (%)", f"{_cv:.1f}" if _cv == _cv else "—", help=GLOSSARY["cv"])
             m2 = st.columns(4)
             m2[0].metric("Mínimo", f"{stats['Mínimo']:.4g}", help=GLOSSARY["amplitude"])
             m2[1].metric("Máximo", f"{stats['Máximo']:.4g}", help=GLOSSARY["amplitude"])

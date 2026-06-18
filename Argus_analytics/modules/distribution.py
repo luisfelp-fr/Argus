@@ -55,21 +55,23 @@ def render(state) -> None:
         st.plotly_chart(fig_d, use_container_width=True, key="dist_dens")
 
     skew_txt = interpret_skewness(sk)
+    finite_shape = (sk == sk) and (ku == ku)  # False se variável (quase) constante
     with tabs[3]:
         c = st.columns(4)
         c[0].metric("Média", f"{series.mean():.4g}", help=GLOSSARY["media"])
         c[1].metric("Mediana", f"{series.median():.4g}", help=GLOSSARY["mediana"])
-        c[2].metric("Assimetria", f"{sk:.2f}", help=GLOSSARY["assimetria"])
-        c[3].metric("Curtose", f"{ku:.2f}", help=GLOSSARY["curtose"])
+        c[2].metric("Assimetria", f"{sk:.2f}" if sk == sk else "—", help=GLOSSARY["assimetria"])
+        c[3].metric("Curtose", f"{ku:.2f}" if ku == ku else "—", help=GLOSSARY["curtose"])
         st.markdown(f"- {skew_txt}")
 
-        st.divider()
-        st.markdown("##### 📐 Faixas de **assimetria**")
-        band_cards("Assimetria (skewness)", f"{sk:.2f}", skew_bands(sk),
-                   help_text=GLOSSARY["assimetria"])
-        st.markdown("##### 📐 Faixas de **curtose**")
-        band_cards("Curtose (em excesso)", f"{ku:.2f}", kurtosis_bands(ku),
-                   help_text=GLOSSARY["curtose"])
+        if finite_shape:
+            st.divider()
+            st.markdown("##### 📐 Faixas de **assimetria**")
+            band_cards("Assimetria (skewness)", f"{sk:.2f}", skew_bands(sk),
+                       help_text=GLOSSARY["assimetria"])
+            st.markdown("##### 📐 Faixas de **curtose**")
+            band_cards("Curtose (em excesso)", f"{ku:.2f}", kurtosis_bands(ku),
+                       help_text=GLOSSARY["curtose"])
 
     st.divider()
     if st.button("➕ Adicionar ao relatório", key="dist_add"):
@@ -77,7 +79,8 @@ def render(state) -> None:
             name="Distribuição dos Dados",
             variables={"variável": col},
             params={"bins": nbins},
-            interpretation=f"{skew_txt} (assimetria={sk:.2f}, curtose={ku:.2f}).",
+            interpretation=(f"{skew_txt} (assimetria={sk:.2f}, curtose={ku:.2f})."
+                            if finite_shape else f"{skew_txt}"),
             figures=[fig_h, fig_b, fig_d],
             timestamp=now_str(),
         )
