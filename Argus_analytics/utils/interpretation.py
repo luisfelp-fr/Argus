@@ -171,7 +171,8 @@ def interpret_lag(var: str, target: str, lag_min: float, corr: float) -> str:
     elif lag_min > 0:
         timing = f"com atraso de cerca de **{lag_min:g} min** (a variável antecede o alvo)"
     else:
-        timing = f"com defasagem de {abs(lag_min):g} min"
+        timing = (f"com defasagem de {abs(lag_min):g} min "
+                  "(a variável muda após oscilação do alvo)")
     return (
         f"**{var}** mostrou correlação {direction} {strength} (r = {corr:.3f}) com "
         f"**{target}** {timing}. Em processos industriais, esse atraso pode refletir "
