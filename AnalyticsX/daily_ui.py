@@ -590,6 +590,10 @@ def render_seasonal_mode() -> None:
                     consolidated = analysis.consolidated_ranking(stat, importances, shap_imp)
                     all_sheet_names = ([sh["name"] for sh in cont_sheets]
                                        + [sh["name"] for sh in lab_sheets])
+                    # Shapley/LMG por indicador — "SHAP estatístico", funciona em
+                    # todos os modos (não precisa de modelo).
+                    ind_shapley, ind_shapley_r2 = analysis.indicator_shapley(
+                        X, y, all_sheet_names, stat_df=stat)
                     diag = analysis.generate_diagnosis(consolidated, model_result,
                                                        sheet_names=all_sheet_names)
                     report_text = analysis.generate_report_text(
@@ -615,6 +619,7 @@ def render_seasonal_mode() -> None:
                     "all_sheet_names": all_sheet_names,
                     "model_type": (model_type if run_model else None),
                     "run_shap": run_shap,
+                    "ind_shapley": ind_shapley, "ind_shapley_r2": ind_shapley_r2,
                     "n_periodos": len(clean), "n_features": X.shape[1],
                 }
                 # reinicia a investigação em cadeia ao reprocessar
@@ -882,6 +887,33 @@ def render_seasonal_mode() -> None:
                 st.plotly_chart(fig_ind, use_container_width=True, key="v2_bar_indicador")
                 _attach_button("fig_indicador", "figure", "Impacto por indicador",
                                fig_ind, "Ranking Consolidado")
+
+            # --- Contribuição de cada indicador (Shapley estatístico) ------- #
+            ind_shap = res.get("ind_shapley")
+            if ind_shap is not None and not ind_shap.empty:
+                r2tot = float(res.get("ind_shapley_r2", 0.0) or 0.0)
+                st.subheader("🧩 Contribuição de cada indicador (Shapley)",
+                             help=HELP["shapley_indicador"])
+                st.caption(
+                    "Reparte de forma **justa** quanto cada indicador explica da "
+                    "variação do alvo (valores de Shapley — a base do SHAP — mas "
+                    "**sem treinar modelo**, então vale também no modo *Só "
+                    f"estatística*). As parcelas somam o total explicado ≈ "
+                    f"**{r2tot * 100:.0f}%**."
+                )
+                st.dataframe(ind_shap, use_container_width=True, hide_index=True)
+                _attach_button("rank_shapley_ind", "table",
+                               "Contribuição de cada indicador (Shapley)",
+                               ind_shap, "Ranking Consolidado")
+                fig_shap_ind = _bar_rank(
+                    ind_shap.set_index("Indicador")["Contribuição (%)"],
+                    "Contribuição por indicador (Shapley)", "Contribuição (%)",
+                    color="Oranges")
+                st.plotly_chart(fig_shap_ind, use_container_width=True,
+                                key="v2_bar_shapley_ind")
+                _attach_button("fig_shapley_ind", "figure",
+                               "Contribuição por indicador (Shapley)",
+                               fig_shap_ind, "Ranking Consolidado")
 
             with st.expander("🔬 Detalhe por métrica (variáveis derivadas)"):
                 st.caption(

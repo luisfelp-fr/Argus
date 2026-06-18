@@ -2231,8 +2231,71 @@ def drilldown_ranking(
     return indicator_ranking(cons2, sheet_names)
 
 
+def indicator_shapley(
+    X: pd.DataFrame, y: pd.Series, sheet_names: list[str] | None = None,
+    *, stat_df: pd.DataFrame | None = None, max_indicators: int = 16,
+) -> tuple[pd.DataFrame, float]:
+    """Decomposição de Shapley/LMG da variância explicada (R²) por INDICADOR.
+
+    É o "SHAP estatístico": reparte de forma **justa e não-sobreposta** (valores
+    de Shapley, da teoria dos jogos) quanto cada indicador explica da variação do
+    alvo — **sem treinar modelo de ML**, então funciona inclusive no modo "Só
+    estatística". Cada indicador é representado pela sua feature de relação linear
+    mais forte; as fatias somam o R² total explicado.
+
+    Retorna ``(tabela, r2_total)`` com colunas
+    ``["Indicador", "Contribuição (%)", "Parcela (R²)"]`` (ordenado desc).
+    """
+    cols_out = ["Indicador", "Contribuição (%)", "Parcela (R²)"]
+    if not _HAS_SKLEARN or X is None or X.shape[1] == 0 or len(y) < 5:
+        return pd.DataFrame(columns=cols_out), 0.0
+
+    # força linear (|Pearson|) de cada feature, para escolher o representante
+    if stat_df is not None and not stat_df.empty and "Pearson r" in stat_df.columns:
+        strength = {r["Variável"]: abs(float(r["Pearson r"]))
+                    for _, r in stat_df.iterrows()}
+    else:
+        strength = {}
+        yv = y.to_numpy(dtype=float)
+        for c in X.columns:
+            xv = X[c].to_numpy(dtype=float)
+            strength[c] = (abs(float(np.corrcoef(xv, yv)[0, 1]))
+                           if np.std(xv) > 0 else 0.0)
+
+    # agrupa por indicador e escolhe a feature mais forte de cada
+    reps: dict[str, tuple[str, float]] = {}
+    disp: dict[str, str] = {}
+    for c in X.columns:
+        key, d = base_indicator(c, sheet_names)
+        s = strength.get(c, 0.0)
+        if key not in reps or s > reps[key][1]:
+            reps[key] = (c, s)
+            disp[key] = d
+
+    # com muitos indicadores, mantém os mais fortes (Shapley fica caro)
+    items = sorted(reps.items(), key=lambda kv: kv[1][1], reverse=True)[:max_indicators]
+    keys = [k for k, _ in items]
+    if not keys:
+        return pd.DataFrame(columns=cols_out), 0.0
+
+    Xr = pd.DataFrame({k: X[reps[k][0]].to_numpy(dtype=float) for k in keys})
+    shares, r2 = relative_importance(Xr, y)
+
+    rows = []
+    for k in keys:
+        sh = max(0.0, float(shares.get(k, 0.0)))
+        rows.append({
+            "Indicador": disp[k],
+            "Contribuição (%)": round(sh / r2 * 100, 1) if r2 > 1e-9 else 0.0,
+            "Parcela (R²)": round(sh, 4),
+        })
+    out = (pd.DataFrame(rows, columns=cols_out)
+           .sort_values("Parcela (R²)", ascending=False).reset_index(drop=True))
+    return out, round(float(r2), 4)
+
+
 # --------------------------------------------------------------------------- #
-# B.6  Texto do relatório final (por que estas variáveis são as principais)
+# B.7  Texto do relatório final (por que estas variáveis são as principais)
 # --------------------------------------------------------------------------- #
 def _fmt_lag_legivel(name: str) -> str | None:
     m = re.search(r"_lag_(\d+)min", name)

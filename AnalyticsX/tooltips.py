@@ -97,6 +97,14 @@ HELP: dict[str, str] = {
         "Score consolidado: combina Spearman, Informação Mútua, importância do modelo e SHAP "
         "(normalizados de 0 a 1) num único índice de evidência."
     ),
+    "shapley_indicador": (
+        "Contribuição de cada indicador (Shapley): reparte de forma JUSTA e "
+        "não-sobreposta quanto cada indicador explica da variação do alvo. Usa "
+        "valores de Shapley (a base do SHAP, da teoria dos jogos) sobre a "
+        "variância explicada (R²) — porém de forma puramente estatística, SEM "
+        "treinar modelo, então vale inclusive no modo 'Só estatística'. As "
+        "parcelas de todos os indicadores somam o total explicado (R²)."
+    ),
     # ----------------------------------------------------------------- #
     # Métricas de desempenho
     # ----------------------------------------------------------------- #

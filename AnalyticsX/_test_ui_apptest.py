@@ -89,6 +89,14 @@ print("Render das abas de resultado OK")
 
 # ranking por indicador + estado da cadeia
 assert res.get("all_sheet_names"), "all_sheet_names deveria estar em v2_results"
+
+# Shapley por indicador deve existir MESMO no modo "Só estatística" (sem modelo)
+assert res["model"] is None, "este teste roda em modo Só estatística"
+ish = res.get("ind_shapley")
+assert ish is not None and not ish.empty, "Shapley por indicador ausente no modo só estatistico"
+assert list(ish.columns) == ["Indicador", "Contribuição (%)", "Parcela (R²)"]
+print(f"Shapley por indicador OK sem modelo ({len(ish)} indicadores, "
+      f"R2~{res.get('ind_shapley_r2')})")
 chain = at.session_state["v2_chain"]
 assert len(chain) == 1 and chain[0]["col"] is None, "cadeia comeca no alvo principal"
 ind0 = chain[0]["ranking"]

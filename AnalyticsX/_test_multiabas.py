@@ -153,4 +153,18 @@ assert not dr.empty, "drill-down deveria retornar drivers"
 assert not dr["Indicador"].str.contains("Vazao").any(), "nao deve se autoexplicar"
 print("[OK] drill-down nao se autoexplica e retorna ranking limpo")
 
+# ---------------------------------------------------------------- Shapley por indicador
+ish, r2 = analysis.indicator_shapley(X, y, SHEETS, stat_df=stat)
+print("\n== Contribuicao de cada indicador (Shapley/LMG) ==")
+print(ish.to_string(index=False), "| R2 total:", r2)
+assert list(ish.columns) == ["Indicador", "Contribuição (%)", "Parcela (R²)"]
+assert not ish.empty
+assert (ish["Parcela (R²)"] >= -1e-9).all(), "parcelas devem ser nao-negativas"
+assert abs(ish["Parcela (R²)"].sum() - r2) < 0.02, "parcelas devem somar o R2"
+assert not ish["Indicador"].str.contains(r"_lag_|_mean|_std|_per_",
+                                         regex=True).any()
+assert ish["Indicador"].iloc[0] in ("Temperatura (Moenda)", "pH (Fermentacao)",
+                                    "Vazao (Moenda)")
+print("[OK] Shapley: fatias nao-negativas somam R2, nomes limpos, sem modelo")
+
 print("\nTUDO OK")
