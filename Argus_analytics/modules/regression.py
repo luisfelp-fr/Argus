@@ -107,7 +107,9 @@ def render(state) -> None:
         st.warning("Selecione ao menos uma variável explicativa.")
         return
 
-    if not st.button("▶ Executar regressão", type="primary", key="reg_run"):
+    if st.button("▶ Executar regressão", type="primary", key="reg_run"):
+        st.session_state["reg_has_run"] = True
+    if not st.session_state.get("reg_has_run"):
         st.caption("Configure as variáveis e clique em **Executar regressão**.")
         return
 

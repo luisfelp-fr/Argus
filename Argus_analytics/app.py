@@ -55,6 +55,13 @@ ANALYSES: dict[str, dict] = {
         "render": data_loader.render,
         "needs_data": False,
     },
+    "outliers": {
+        "label": "Outliers",
+        "icon": "🚨",
+        "desc": "Identifique valores muito diferentes do padrão (IQR, Z-score e MAD).",
+        "render": outliers.render,
+        "needs_data": True,
+    },
     "data_quality": {
         "label": "Qualidade dos Dados",
         "icon": "🧹",
@@ -130,13 +137,6 @@ ANALYSES: dict[str, dict] = {
         "icon": "⏳",
         "desc": "Descubra se uma variável afeta outra após um atraso (defasagem temporal).",
         "render": lag_analysis.render,
-        "needs_data": True,
-    },
-    "outliers": {
-        "label": "Outliers",
-        "icon": "🚨",
-        "desc": "Identifique valores muito diferentes do padrão (IQR, Z-score e MAD).",
-        "render": outliers.render,
         "needs_data": True,
     },
     "report": {

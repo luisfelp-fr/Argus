@@ -117,6 +117,18 @@ GLOSSARY: dict[str, str] = {
            "outra. Lag positivo: a variável explicativa antecede o alvo.",
     "cross_correlation": "Correlação cruzada: correlação entre as variáveis em "
                          "vários atrasos; o pico indica o lag mais provável.",
+    "arimax": "ARIMAX: modelo de série temporal que descreve a dinâmica própria do "
+              "alvo (ARIMA) e ainda inclui uma variável explicativa defasada como "
+              "regressor exógeno (X). Serve para confirmar se o lag detectado tem "
+              "efeito real, controlando tendência e autocorrelação que poderiam "
+              "gerar correlação espúria.",
+    "ljung_box": "Teste de Ljung-Box: verifica se os resíduos do modelo são 'ruído "
+                 "branco' (sem autocorrelação sobrando). p-valor > 0,05 indica "
+                 "resíduos aleatórios — o modelo capturou bem a estrutura temporal "
+                 "e o efeito do regressor não é artefato.",
+    "arimax_coef": "Coeficiente exógeno: efeito estimado da variável explicativa "
+                   "(no lag testado) sobre o alvo, já descontada a dinâmica própria "
+                   "do alvo. Sinal positivo aumenta, negativo reduz.",
     # Outliers
     "iqr": "IQR (1,5×amplitude interquartílica): marca como outlier valores abaixo "
            "de Q1 − 1,5·IQR ou acima de Q3 + 1,5·IQR.",

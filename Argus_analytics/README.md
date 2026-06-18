@@ -73,18 +73,18 @@ O aplicativo abrirá no navegador (por padrão em `http://localhost:8501`).
 | # | Análise | Para quê serve |
 |---|---------|----------------|
 | 1 | **Visão Geral dos Dados** | Importar, validar e diagnosticar a base |
-| 2 | **Qualidade dos Dados** | Ausentes, duplicidades, colunas constantes, outliers |
-| 3 | **Estatística Descritiva** | Média, mediana, dispersão, quartis, CV |
-| 4 | **Distribuição dos Dados** | Histograma, boxplot, densidade, assimetria |
-| 5 | **Teste de Normalidade** | Shapiro-Wilk e Anderson-Darling |
-| 6 | **Correlação** | Pearson / Spearman / Kendall, heatmap, ranking |
-| 7 | **Regressão** | Linear simples e múltipla, R², resíduos |
-| 8 | **Comparação entre Grupos** | Teste t, Mann-Whitney, ANOVA, Kruskal-Wallis |
-| 9 | **Controle Estatístico de Processo** | Carta de controle (individuais) |
-| 10 | **Capabilidade Cp/Cpk** | Normalidade (AD) + transformações (Box-Cox, Johnson…) + Cp/Cpk |
-| 11 | **Análise Temporal** | Tendência, agregação, média móvel |
-| 12 | **Análise com Lag** | Defasagem causa→efeito entre variáveis |
-| 13 | **Outliers** | IQR, Z-score e MAD |
+| 2 | **Outliers** | IQR, Z-score e MAD |
+| 3 | **Qualidade dos Dados** | Ausentes, duplicidades, colunas constantes, outliers |
+| 4 | **Estatística Descritiva** | Média, mediana, dispersão, quartis, CV |
+| 5 | **Distribuição dos Dados** | Histograma, boxplot, densidade, assimetria |
+| 6 | **Teste de Normalidade** | Shapiro-Wilk e Anderson-Darling |
+| 7 | **Correlação** | Pearson / Spearman / Kendall, heatmap, ranking |
+| 8 | **Regressão** | Linear simples e múltipla, R², resíduos |
+| 9 | **Comparação entre Grupos** | Teste t, Mann-Whitney, ANOVA, Kruskal-Wallis |
+| 10 | **Controle Estatístico de Processo** | Carta de controle (individuais) |
+| 11 | **Capabilidade Cp/Cpk** | Normalidade (AD) + transformações (Box-Cox, Johnson…) + Cp/Cpk |
+| 12 | **Análise Temporal** | Tendência, agregação, média móvel |
+| 13 | **Análise com Lag** | Defasagem causa→efeito + validação ARIMAX/Ljung-Box |
 | 14 | **Relatório Final** | Montagem e download do relatório |
 
 ---

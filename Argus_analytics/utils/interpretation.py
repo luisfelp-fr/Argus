@@ -179,6 +179,48 @@ def interpret_lag(var: str, target: str, lag_min: float, corr: float) -> str:
     )
 
 
+def interpret_lag_validation(var: str, target: str, lag_min: float,
+                             coef: float, exog_p: float, lb_p: float) -> str:
+    """Interpreta a validação ARIMAX de um lag (significância + Ljung-Box)."""
+    sig = bool(exog_p == exog_p and exog_p < 0.05)
+    wn = bool(lb_p == lb_p and lb_p > 0.05)
+    sentido = "aumenta" if coef >= 0 else "reduz"
+    when = (f"defasada em **{lag_min:g} min**" if abs(lag_min) > 1e-9
+            else "sem defasagem")
+
+    if sig and wn:
+        veredito = (
+            f"✅ **Lag validado.** Mesmo controlando a dinâmica própria de "
+            f"**{target}** (modelo ARIMAX), **{var}** {when} tem efeito "
+            f"estatisticamente significativo (p = {exog_p:.4f}) e {sentido} o "
+            f"alvo (coef. = {coef:.4g}). Os resíduos são ruído branco "
+            f"(Ljung-Box p = {lb_p:.4f}), indicando que o modelo capturou bem a "
+            "estrutura temporal — a relação não parece espúria."
+        )
+    elif sig and not wn:
+        veredito = (
+            f"⚠️ **Validação parcial.** **{var}** {when} é significativa "
+            f"(p = {exog_p:.4f}), mas os resíduos ainda mostram autocorrelação "
+            f"(Ljung-Box p = {lb_p:.4f}). Ajuste a ordem do modelo ou o lag — pode "
+            "haver dinâmica não capturada."
+        )
+    elif not sig and wn:
+        veredito = (
+            f"❌ **Lag não confirmado.** Com a dinâmica de **{target}** modelada, "
+            f"**{var}** {when} deixa de ser significativa (p = {exog_p:.4f}). A "
+            "correlação cruzada provavelmente refletia tendência/autocorrelação "
+            "comum, não um efeito direto."
+        )
+    else:
+        veredito = (
+            f"❌ **Não validado.** **{var}** {when} não é significativa "
+            f"(p = {exog_p:.4f}) e os resíduos não são ruído branco "
+            f"(Ljung-Box p = {lb_p:.4f}). Reavalie o lag, a ordem do modelo ou a "
+            "qualidade da série."
+        )
+    return veredito
+
+
 # --------------------------------------------------------------------------- #
 # Outliers
 # --------------------------------------------------------------------------- #
