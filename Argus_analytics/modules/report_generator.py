@@ -80,7 +80,7 @@ try:
     from reportlab.lib import colors
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table as RLTable,
-        TableStyle, PageBreak,
+        TableStyle, PageBreak, HRFlowable,
     )
     _HAS_REPORTLAB = True
 except Exception:  # pragma: no cover
@@ -362,7 +362,12 @@ def build_pdf(items: list[dict], meta: dict) -> bytes | None:
                 "<b>Interpretação:</b> " + _pdf_inline(it["interpretation"], allow_md=True),
                 interp))
 
-        story.append(PageBreak())
+        # Separador leve entre análises: mantém o conteúdo em sequência na mesma
+        # página (sem forçar quebra a cada item), com uma linha sutil de divisão.
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(HRFlowable(width="100%", thickness=0.6,
+                                color=colors.HexColor("#D9E6EB"),
+                                spaceBefore=2, spaceAfter=10))
 
     # --- Conclusões e recomendações ------------------------------------- #
     story.append(Paragraph("Conclusões principais", h2))
