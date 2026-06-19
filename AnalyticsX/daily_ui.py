@@ -766,7 +766,7 @@ def render_seasonal_mode() -> None:
             info = raw_series.get(sel_ind)
             if info is not None:
                 dfr = info["df"]
-                dts = pd.to_datetime(dfr[info["dt_col"]], dayfirst=True, errors="coerce")
+                dts = analysis._to_datetime(dfr[info["dt_col"]])
                 vals = pd.to_numeric(dfr[info["col"]], errors="coerce")
                 serie = pd.Series(vals.values, index=dts).dropna().sort_index()
                 # decima séries longas só para visualização

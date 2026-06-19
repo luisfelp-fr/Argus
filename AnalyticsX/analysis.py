@@ -16,15 +16,62 @@ o indicador para frente no tempo (atrasá-lo) alinha-o com o indicador-chave.
 
 from __future__ import annotations
 
+import datetime as _dt
 import io
 import itertools
 import re
 import unicodedata
+import warnings
 from dataclasses import dataclass
 from math import factorial
 
 import numpy as np
 import pandas as pd
+
+# O parsing item-a-item de datas (fallback do pandas) é lento e ruidoso; este
+# aviso é tratado pelo helper _to_datetime (parsing vetorizado). Silenciado por
+# segurança caso algum caminho não passe pelo helper.
+warnings.filterwarnings("ignore", message="Could not infer format")
+
+
+# Formatos de data/hora mais comuns (BR e ISO) tentados de forma vetorizada.
+_DT_FORMATS = (
+    "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y",
+    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+    "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y %H:%M:%S.%f",
+    "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%d-%m-%Y",
+    "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y",
+)
+
+
+def _to_datetime(values, dayfirst: bool = True) -> pd.Series:
+    """Converte para datetime de forma VETORIZADA e silenciosa.
+
+    Evita o fallback lento item-a-item do pandas (UserWarning "Could not infer
+    format", que em planilhas grandes pode travar o app): se já é datetime ou
+    objetos de data, deixa o pandas inferir; senão tenta um formato único comum
+    (rápido); só se nada casar recorre ao parser geral com o aviso suprimido.
+    """
+    s = values if isinstance(values, pd.Series) else pd.Series(values)
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return pd.to_datetime(s, errors="coerce")
+    nn = s.dropna()
+    first = nn.iloc[0] if len(nn) else None
+    # já são objetos de data (ex.: openpyxl) ou numéricos -> caminho rápido
+    if (isinstance(first, (pd.Timestamp, _dt.datetime, _dt.date))
+            or pd.api.types.is_numeric_dtype(s)):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return pd.to_datetime(s, errors="coerce")
+    txt = s.astype("string").str.strip()
+    sample = txt.dropna().head(300)
+    if len(sample):
+        for fmt in _DT_FORMATS:
+            if pd.to_datetime(sample, format=fmt, errors="coerce").notna().mean() >= 0.95:
+                return pd.to_datetime(txt, format=fmt, errors="coerce")
+    with warnings.catch_warnings():   # fallback geral, sem o aviso
+        warnings.simplefilter("ignore")
+        return pd.to_datetime(txt, dayfirst=dayfirst, errors="coerce")
 
 try:
     from sklearn.feature_selection import mutual_info_regression
@@ -96,7 +143,7 @@ def load_table(file, datetime_col: int | str = 0) -> pd.DataFrame:
     else:
         dt_name = datetime_col
 
-    df[dt_name] = pd.to_datetime(df[dt_name], dayfirst=True, errors="coerce")
+    df[dt_name] = _to_datetime(df[dt_name])
     df = df.dropna(subset=[dt_name])
     df = df.set_index(dt_name).sort_index()
     df.index.name = "datetime"
@@ -981,7 +1028,7 @@ def build_daily_features(
     """
     limits = limits or {}
     df = proc_df.copy()
-    dt = pd.to_datetime(df[dt_col], dayfirst=True, errors="coerce")
+    dt = _to_datetime(df[dt_col])
     df = df.loc[dt.notna()].copy()
     df["__dt__"] = dt[dt.notna()].values
     df = df.sort_values("__dt__")
@@ -1041,7 +1088,7 @@ def parse_target_series(
     entre leituras consecutivas (24 h → 1440 min; a cada 4 h → 240 min; etc.).
     """
     p = prod_df.copy()
-    tdt = pd.to_datetime(p[date_col], dayfirst=True, errors="coerce")
+    tdt = _to_datetime(p[date_col])
     val = _coerce_numeric_brl(p[target_col])
     s = pd.Series(np.asarray(val, dtype=float), index=tdt)
     s = s[s.index.notna()].dropna()
@@ -1076,7 +1123,7 @@ def build_period_features(
     """
     limits = limits or {}
     df = proc_df.copy()
-    dt = pd.to_datetime(df[dt_col], dayfirst=True, errors="coerce")
+    dt = _to_datetime(df[dt_col])
     df = df.loc[dt.notna()].copy()
     df["__dt__"] = dt[dt.notna()].values
     df = df.sort_values("__dt__").reset_index(drop=True)
@@ -1150,7 +1197,7 @@ def merge_with_production(
 ) -> pd.DataFrame:
     """Junta a base diária de processo com a produção diária (alvo = ``Producao``)."""
     p = prod_df.copy()
-    pdate = pd.to_datetime(p[prod_date_col], dayfirst=True, errors="coerce")
+    pdate = _to_datetime(p[prod_date_col])
     target = _coerce_numeric_brl(p[target_col])
     prod = pd.DataFrame(
         {"data": pdate.dt.normalize().values, "Producao": target.values}
@@ -1753,7 +1800,7 @@ def guess_datetime_column(df: pd.DataFrame) -> str | None:
         sample = col.dropna().astype(str).head(200)
         if sample.empty:
             continue
-        parsed = pd.to_datetime(sample, dayfirst=True, errors="coerce")
+        parsed = _to_datetime(sample)
         if parsed.notna().mean() > 0.8:
             return str(c)
     return None
@@ -1771,7 +1818,7 @@ def guess_sheet_role(name: str, df: pd.DataFrame) -> str:
         return ROLE_ALVO
     dt_col = guess_datetime_column(df)
     if dt_col is not None:
-        dt = pd.to_datetime(df[dt_col], dayfirst=True, errors="coerce").dropna()
+        dt = _to_datetime(df[dt_col]).dropna()
         if len(dt) >= 2:
             step = estimate_step_minutes(dt)
             if step >= 60.0:
@@ -1831,7 +1878,7 @@ def parse_lab_sheet(
     do espaçamento entre leituras. Cada valor informado em T representa a
     média da janela ``(T − lab_period, T]``.
     """
-    dt = pd.to_datetime(df[dt_col], dayfirst=True, errors="coerce")
+    dt = _to_datetime(df[dt_col])
     cols = value_cols or [c for c in df.columns if c != dt_col]
     vals = pd.DataFrame({c: _coerce_numeric_brl(df[c]) for c in cols})
     vals.index = dt
@@ -1982,7 +2029,7 @@ def detect_excursion_events(
     area`` (desvio × tempo, em unidade·min) — um evento por sequência contígua
     abaixo do mínimo ou acima do máximo.
     """
-    dt = pd.to_datetime(df[dt_col], dayfirst=True, errors="coerce")
+    dt = _to_datetime(df[dt_col])
     vals = _coerce_numeric_brl(df[col])
     ok = dt.notna() & vals.notna()
     t = dt[ok].to_numpy(dtype="datetime64[ns]")
