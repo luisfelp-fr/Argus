@@ -119,4 +119,31 @@ at.run()
 assert not at.exception, f"excecao ao voltar: {at.exception}"
 assert len(at.session_state["v2_chain"]) == 1, "cadeia deveria voltar a 1 passo"
 print("Voltar um nivel OK")
+
+# ---------------------------------------------------------------- AutoML na UI
+at.selectbox(key="v2_tipo").select("Estatística + Modelo")
+at.run()
+at.radio(key="v2_model").set_value("Automático (AutoML)")
+at.run()
+at.radio(key="v2_automl_depth").set_value("Rápido")
+at.run()
+at.button(key="v2_run").click()
+at.run()
+assert not at.exception, f"excecao no AutoML: {at.exception}"
+res2 = at.session_state["v2_results"]
+assert res2.get("is_automl") is True
+mr = res2["model"]
+assert mr is not None and hasattr(mr, "best_params") and mr.best_params
+assert mr.selected_features and set(mr.selected_features) <= set(res2["X"].columns)
+print(f"AutoML na UI OK (modelo {mr.model_name}, {mr.k_selected} variaveis)")
+
+# simulador: mover um slider e a previsao recalcula sem excecao
+import analysis as _an
+top = _an._clean_token(mr.importances.index[0])
+sl = at.slider(key=f"v2_sim_{top}")
+sl.set_value(sl.value if sl.value is None else float(sl.value)).run()
+assert not at.exception, f"excecao no simulador: {at.exception}"
+mets = [me for me in at.metric if me.label == "Alvo previsto"]
+assert mets, "metrica 'Alvo previsto' do simulador ausente"
+print("Simulador e-se OK (previsao exibida)")
 print("TUDO OK")

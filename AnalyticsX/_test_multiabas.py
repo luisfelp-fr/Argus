@@ -12,6 +12,7 @@ apenas no período atual (sem lag) — ver ``_test_ui_apptest.py``.
 Uso: python _test_multiabas.py
 """
 
+import numpy as np
 import pandas as pd
 
 import analysis
@@ -166,5 +167,28 @@ assert not ish["Indicador"].str.contains(r"_lag_|_mean|_std|_per_",
 assert ish["Indicador"].iloc[0] in ("Temperatura (Moenda)", "pH (Fermentacao)",
                                     "Vazao (Moenda)")
 print("[OK] Shapley: fatias nao-negativas somam R2, nomes limpos, sem modelo")
+
+# ---------------------------------------------------------------- AutoML
+auto = analysis.auto_model(X, y, n_iter=8, cv_folds=3, max_candidates_k=15)
+print("\n== AutoML ==")
+print("vencedor:", auto.model_name, "| K:", auto.k_selected, "| CV RMSE:", auto.cv_score)
+assert isinstance(auto, analysis.AutoModelResult)
+assert auto.model_name in ("RandomForest", "XGBoost")
+assert auto.selected_features and set(auto.selected_features) <= set(X.columns)
+assert auto.feature_names == auto.selected_features
+assert all(np.isfinite([auto.metrics["MAE"], auto.metrics["RMSE"]]))
+assert not auto.candidates_df.empty and "RMSE (CV)" in auto.candidates_df.columns
+# subset: shap/day_contributions restritos as features selecionadas
+si = analysis.shap_importance(auto, X)
+assert si is None or set(si.index) <= set(auto.selected_features)
+dc = analysis.day_contributions(auto, X, X.index[-1])
+assert set(dc["Variável"]) <= set(auto.selected_features)
+# simulador
+base_pred = analysis.simulate_prediction(auto, X, {})
+assert np.isfinite(base_pred)
+top_feat = auto.importances.index[0]
+hi = analysis.simulate_prediction(auto, X, {top_feat: float(X[top_feat].max())})
+assert np.isfinite(hi)
+print("[OK] AutoML: escolhe modelo, seleciona features, subset e simulador funcionam")
 
 print("\nTUDO OK")

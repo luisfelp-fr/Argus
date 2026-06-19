@@ -72,8 +72,33 @@ HELP: dict[str, str] = {
         "Completa (com SHAP): adiciona a explicabilidade SHAP."
     ),
     "modelo": (
-        "RandomForest: floresta de árvores de decisão — robusto e estável. "
+        "Automático (AutoML): o programa seleciona as variáveis que mais importam, "
+        "ajusta os parâmetros e escolhe entre RandomForest e XGBoost o que prevê melhor. "
+        "RandomForest: floresta de árvores — robusto e estável. "
         "XGBoost: gradient boosting — costuma ser mais preciso, porém mais sensível ao ajuste."
+    ),
+    "automl": (
+        "AutoML: o próprio programa interpreta os dados e monta o melhor modelo — "
+        "seleciona as variáveis que mais importam, ajusta os hiperparâmetros (busca "
+        "validada no tempo) e escolhe entre RandomForest e XGBoost o que erra menos. "
+        "Rápido (~30s) testa menos combinações; Completo (~1-2 min) busca mais a fundo."
+    ),
+    "cv_temporal": (
+        "Validação cruzada temporal (TimeSeriesSplit): testa os parâmetros sempre "
+        "treinando no passado e validando no futuro, sem embaralhar — para o ajuste não "
+        "'trapacear' usando informação futura. O melhor modelo é o de menor erro nessa "
+        "validação."
+    ),
+    "selecao_features": (
+        "Seleção de variáveis: antes de ajustar o modelo, o programa mantém só as "
+        "variáveis que mais ajudam a prever (descarta ruído), o que acelera o ajuste e "
+        "reduz o sobreajuste."
+    ),
+    "simulador": (
+        "Simulador 'e-se': informe valores para as principais variáveis e o modelo prevê "
+        "o alvo na hora. As demais variáveis ficam no valor típico (mediana). Útil para "
+        "responder 'se eu operar assim, qual o resultado esperado?'. É uma estimativa do "
+        "modelo, não uma garantia."
     ),
     "random_forest": (
         "RandomForest: treina muitas árvores de decisão, cada uma vendo amostras e "

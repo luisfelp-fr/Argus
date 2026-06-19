@@ -410,9 +410,18 @@ def render_seasonal_mode() -> None:
                 help=HELP["tipo_analise"], key="v2_tipo",
             )
         with cp3:
-            model_options = ["RandomForest"] + (["XGBoost"] if analysis._HAS_XGB else [])
+            model_options = (["Automático (AutoML)", "RandomForest"]
+                             + (["XGBoost"] if analysis._HAS_XGB else []))
             model_type = st.radio("Modelo preditivo", model_options,
                                   horizontal=True, help=HELP["modelo"], key="v2_model")
+        is_automl = model_type.startswith("Automático")
+        automl_depth = "Rápido"
+        if is_automl:
+            automl_depth = st.radio(
+                "Profundidade do AutoML", ["Rápido", "Completo"], horizontal=True,
+                help=HELP["automl"], key="v2_automl_depth",
+                captions=["~30s · busca mais enxuta", "~1-2 min · busca mais a fundo"],
+            )
 
         n_blocks = int(np.floor(max_lag_min / period_min)) if period_min else 0
         caption = (
@@ -471,7 +480,10 @@ def render_seasonal_mode() -> None:
 
         if st.button("🚀 Processar", type="primary", key="v2_run"):
             try:
-                with st.spinner("Construindo a base por período e analisando..."):
+                _spin = ("Selecionando variáveis, ajustando e comparando "
+                         "RandomForest × XGBoost (AutoML)..." if (run_model and is_automl)
+                         else "Construindo a base por período e analisando...")
+                with st.spinner(_spin):
                     target_series, period_det = analysis.parse_target_series(
                         prod_raw, prod_date_col, target_col)
 
@@ -577,8 +589,14 @@ def render_seasonal_mode() -> None:
                     shap_imp = None
                     if run_model:
                         try:
-                            model_result = analysis.train_model(
-                                X, y, model_type=model_type)
+                            if is_automl:
+                                depth = ({"n_iter": 30, "cv_folds": 4, "max_candidates_k": 40}
+                                         if automl_depth == "Completo"
+                                         else {"n_iter": 12, "cv_folds": 3, "max_candidates_k": 20})
+                                model_result = analysis.auto_model(X, y, **depth)
+                            else:
+                                model_result = analysis.train_model(
+                                    X, y, model_type=model_type)
                         except Exception as exc:  # noqa: BLE001
                             st.warning(f"Modelo não treinado: {exc}")
                     if run_shap and model_result is not None:
@@ -617,7 +635,9 @@ def render_seasonal_mode() -> None:
                     "excursion_vs_target": exc_target,
                     "raw_series": raw_series,
                     "all_sheet_names": all_sheet_names,
-                    "model_type": (model_type if run_model else None),
+                    "model_type": (model_result.model_name if model_result
+                                   else (model_type if run_model else None)),
+                    "is_automl": is_automl,
                     "run_shap": run_shap,
                     "ind_shapley": ind_shapley, "ind_shapley_r2": ind_shapley_r2,
                     "n_periodos": len(clean), "n_features": X.shape[1],
@@ -822,8 +842,38 @@ def render_seasonal_mode() -> None:
         if model_result is None:
             st.info("Modelo não foi treinado (escolha um tipo de análise com modelo).")
         else:
+            is_auto = isinstance(model_result, analysis.AutoModelResult)
+            # --- Card do AutoML (modelo/variáveis/parâmetros escolhidos) ----- #
+            if is_auto:
+                cv = model_result.cv_score
+                cv_txt = "—" if (cv is None or np.isnan(cv)) else f"{cv:.2f}"
+                st.success(
+                    f"🔧 **AutoML** escolheu **{model_result.model_name}** — "
+                    f"{model_result.k_selected} variáveis selecionadas · "
+                    f"RMSE de validação cruzada {cv_txt}.")
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    with st.expander("📋 Variáveis selecionadas pelo modelo"):
+                        sel_disp = [analysis.humanize_variable(c, sheet_names)
+                                    for c in model_result.selected_features]
+                        st.dataframe(pd.DataFrame({"Variável": sel_disp}),
+                                     use_container_width=True, hide_index=True)
+                    with st.expander("⚙️ Hiperparâmetros ajustados"):
+                        st.caption(HELP["selecao_features"])
+                        st.json(model_result.best_params)
+                with cc2:
+                    st.caption("Comparação dos modelos (menor RMSE de validação vence):")
+                    st.dataframe(model_result.candidates_df, use_container_width=True,
+                                 hide_index=True)
+                    _attach_button("automl_resumo", "table",
+                                   "AutoML — comparação de modelos",
+                                   model_result.candidates_df, "Modelo & Explicabilidade")
+                st.caption("Validação que respeita o tempo (treina no passado, valida no "
+                           "futuro).", help=HELP["cv_temporal"])
+
             m = model_result.metrics
-            st.subheader(f"🤖 Modelo {model_result.model_name} — desempenho (teste)",
+            sufx = " (AutoML)" if is_auto else ""
+            st.subheader(f"🤖 Modelo {model_result.model_name}{sufx} — desempenho (teste)",
                          help=HELP["split_temporal"])
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("MAE", f"{m['MAE']:.2f}", help=HELP["mae"])
@@ -862,6 +912,40 @@ def render_seasonal_mode() -> None:
                                    fig_shap, "Modelo & Explicabilidade")
                 else:
                     st.info("SHAP não disponível neste processamento (escolha 'Completa (com SHAP)').")
+
+            # --- Simulador de previsão "e-se" ------------------------------ #
+            st.divider()
+            st.subheader("🔮 Simulador de previsão (\"e-se\")", help=HELP["simulador"])
+            st.caption(
+                "Ajuste as principais variáveis e veja o alvo previsto pelo modelo. "
+                "As demais ficam no valor típico (mediana). É uma estimativa do modelo."
+            )
+            feats = list(model_result.importances.index)
+            top_feats = feats[:min(6, len(feats))]
+            overrides = {}
+            sc = st.columns(2)
+            for i, f in enumerate(top_feats):
+                col_data = X[f].astype(float)
+                lo = float(np.nanpercentile(col_data, 1))
+                hi = float(np.nanpercentile(col_data, 99))
+                med = float(col_data.median())
+                if not (np.isfinite(lo) and np.isfinite(hi)) or lo >= hi:
+                    continue
+                step = (hi - lo) / 100 or 0.01
+                with sc[i % 2]:
+                    overrides[f] = st.slider(
+                        analysis.humanize_variable(f, sheet_names),
+                        min_value=round(lo, 4), max_value=round(hi, 4),
+                        value=round(med, 4), step=round(step, 4),
+                        key=f"v2_sim_{analysis._clean_token(f)}",
+                    )
+            try:
+                pred = analysis.simulate_prediction(model_result, X, overrides)
+                hist_mean = float(y.mean())
+                st.metric("Alvo previsto", f"{pred:.2f}",
+                          delta=f"{pred - hist_mean:+.2f} vs. média histórica")
+            except Exception as exc:  # noqa: BLE001
+                st.warning(f"Não foi possível simular a previsão: {exc}")
 
     # ===================================================================== #
     # ABA 5 — Ranking Consolidado + Diagnóstico

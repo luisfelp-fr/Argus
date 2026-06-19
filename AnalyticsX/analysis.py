@@ -47,6 +47,7 @@ try:
         mean_squared_error,
         r2_score,
     )
+    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
     _HAS_RF = True
 except ImportError:  # pragma: no cover - dependência opcional
     _HAS_RF = False
@@ -1267,6 +1268,16 @@ class ModelResult:
     importances: pd.Series
 
 
+@dataclass
+class AutoModelResult(ModelResult):
+    """ModelResult estendido com a transparência do AutoML."""
+    best_params: dict           # hiperparâmetros do modelo vencedor
+    cv_score: float             # RMSE de validação cruzada temporal (menor = melhor)
+    selected_features: list     # features escolhidas (= feature_names)
+    candidates_df: pd.DataFrame  # comparação RF × XGBoost (RMSE de CV + params)
+    k_selected: int             # nº de variáveis selecionadas
+
+
 def temporal_split(
     X: pd.DataFrame, y: pd.Series, test_frac: float = 0.25
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
@@ -1333,21 +1344,201 @@ def train_model(
 
 
 # --------------------------------------------------------------------------- #
+# A.6b  AutoML: seleção de variáveis + tuning + escolha do modelo
+# --------------------------------------------------------------------------- #
+def _make_estimator(name: str, rs: int):
+    if name == "XGBoost" and _HAS_XGB:
+        return XGBRegressor(random_state=rs, n_jobs=-1)
+    return RandomForestRegressor(random_state=rs, n_jobs=-1)
+
+
+_AUTOML_GRIDS = {
+    "RandomForest": {
+        "n_estimators": [200, 400, 600], "max_depth": [None, 6, 10, 16],
+        "min_samples_leaf": [1, 2, 4], "max_features": ["sqrt", 0.3, 0.6, 1.0],
+    },
+    "XGBoost": {
+        "n_estimators": [200, 400, 600], "max_depth": [3, 4, 6],
+        "learning_rate": [0.03, 0.05, 0.1], "subsample": [0.7, 0.9, 1.0],
+        "colsample_bytree": [0.7, 0.9, 1.0], "reg_lambda": [0.0, 1.0, 5.0],
+    },
+}
+
+
+def _wrap_auto(mr: ModelResult, *, best_params, cv_score, selected,
+               candidates_df) -> "AutoModelResult":
+    return AutoModelResult(
+        model=mr.model, model_name=mr.model_name, feature_names=mr.feature_names,
+        y_train=mr.y_train, y_test=mr.y_test, y_pred=mr.y_pred,
+        y_pred_train=mr.y_pred_train, metrics=mr.metrics, importances=mr.importances,
+        best_params=best_params, cv_score=cv_score, selected_features=selected,
+        candidates_df=candidates_df, k_selected=len(selected),
+    )
+
+
+def auto_model(
+    X: pd.DataFrame,
+    y: pd.Series,
+    *,
+    max_candidates_k: int = 30,
+    n_iter: int = 25,
+    cv_folds: int = 4,
+    test_frac: float = 0.25,
+    random_state: int = 0,
+    model_types: list[str] | None = None,
+) -> ModelResult:
+    """AutoML: seleciona as variáveis que mais importam, ajusta os hiperparâmetros
+    (RandomizedSearchCV com validação temporal TimeSeriesSplit) para RandomForest e
+    XGBoost e escolhe o melhor modelo. Retorna um ``AutoModelResult``.
+
+    A seleção de variáveis e a validação cruzada usam APENAS a parte de treino
+    (split temporal), evitando vazamento; o desempenho final é medido no teste.
+    """
+    if not _HAS_RF:
+        raise RuntimeError("scikit-learn não está instalado (RandomForest indisponível).")
+    if len(X) < 6:
+        raise ValueError("Amostras insuficientes para treinar o modelo (mín. 6).")
+    if model_types is None:
+        model_types = ["RandomForest"] + (["XGBoost"] if _HAS_XGB else [])
+    else:
+        model_types = [m for m in model_types
+                       if m != "XGBoost" or _HAS_XGB] or ["RandomForest"]
+
+    Xtr, Xte, ytr, yte = temporal_split(X, y, test_frac)
+    n_feat = X.shape[1]
+    folds = max(2, min(int(cv_folds), len(Xtr) - 1))
+
+    # --- degradação para muito poucas amostras: RF simples -------------- #
+    if len(Xtr) < folds + 1 or len(Xtr) < 6:
+        mr = train_model(X, y, model_type="RandomForest", test_frac=test_frac,
+                         random_state=random_state)
+        cand = pd.DataFrame([{"Modelo": "RandomForest", "RMSE (CV)": float("nan"),
+                              "Parâmetros": "padrão"}])
+        return _wrap_auto(mr, best_params=dict(mr.model.get_params()),
+                          cv_score=float("nan"), selected=list(X.columns),
+                          candidates_df=cand)
+
+    tscv = TimeSeriesSplit(n_splits=folds)
+
+    # --- (a) seleção rápida de variáveis (importância de um RF) + melhor K - #
+    sel_rf = RandomForestRegressor(n_estimators=200, random_state=random_state, n_jobs=-1)
+    sel_rf.fit(Xtr, ytr)
+    imp_full = pd.Series(sel_rf.feature_importances_, index=X.columns)\
+        .sort_values(ascending=False)
+    cand_cols = list(imp_full.index[:min(max_candidates_k, n_feat)])
+    k_options = sorted({k for k in (8, 15, 25, len(cand_cols))
+                        if 1 <= k <= len(cand_cols)}) or [len(cand_cols)]
+
+    def _cv_rmse(est, cols):
+        Xs = Xtr[cols]
+        errs = []
+        for tr_i, va_i in tscv.split(Xs):
+            est.fit(Xs.iloc[tr_i], ytr.iloc[tr_i])
+            p = est.predict(Xs.iloc[va_i])
+            errs.append(float(np.sqrt(mean_squared_error(ytr.iloc[va_i], p))))
+        return float(np.mean(errs)) if errs else float("inf")
+
+    best_k, best_k_rmse = k_options[-1], float("inf")
+    for k in k_options:
+        est = RandomForestRegressor(n_estimators=200, random_state=random_state, n_jobs=-1)
+        r = _cv_rmse(est, cand_cols[:k])
+        if r < best_k_rmse:
+            best_k_rmse, best_k = r, k
+    selected = cand_cols[:best_k]
+    Xtr_s, Xte_s = Xtr[selected], Xte[selected]
+
+    # --- (b) tuning de hiperparâmetros por modelo (RandomizedSearchCV) ---- #
+    results: dict[str, tuple] = {}
+    for name in model_types:
+        grid = _AUTOML_GRIDS[name]
+        combos = 1
+        for v in grid.values():
+            combos *= len(v)
+        n_it = max(1, min(int(n_iter), combos))
+        search = RandomizedSearchCV(
+            _make_estimator(name, random_state), grid, n_iter=n_it, cv=tscv,
+            scoring="neg_root_mean_squared_error", random_state=random_state,
+            n_jobs=-1, refit=True)
+        try:
+            search.fit(Xtr_s, ytr)
+        except Exception:  # noqa: BLE001
+            continue
+        results[name] = (search.best_estimator_, dict(search.best_params_),
+                         float(-search.best_score_))
+
+    if not results:  # fallback total: RF default nas features selecionadas
+        base = RandomForestRegressor(n_estimators=400, random_state=random_state, n_jobs=-1)
+        base.fit(Xtr_s, ytr)
+        results["RandomForest"] = (base, dict(base.get_params()), float("nan"))
+
+    # --- (c) escolha do vencedor (menor RMSE de CV) ---------------------- #
+    winner = min(results, key=lambda k: (np.inf if np.isnan(results[k][2])
+                                         else results[k][2]))
+    best, best_params, cv_score = results[winner]
+    candidates_df = pd.DataFrame([
+        {"Modelo": nm, "RMSE (CV)": round(results[nm][2], 4),
+         "Parâmetros": ", ".join(f"{k}={v}" for k, v in results[nm][1].items()
+                                 if k in _AUTOML_GRIDS[nm])}
+        for nm in results
+    ]).sort_values("RMSE (CV)", na_position="last").reset_index(drop=True)
+
+    # --- (d) refit já vem do RandomizedSearchCV; mede no teste ----------- #
+    y_pred = np.asarray(best.predict(Xte_s), dtype=float)
+    y_pred_train = np.asarray(best.predict(Xtr_s), dtype=float)
+    metrics = _regression_metrics(yte.to_numpy(dtype=float), y_pred)
+    imp = pd.Series(
+        getattr(best, "feature_importances_", np.zeros(len(selected))),
+        index=selected,
+    ).sort_values(ascending=False)
+
+    return AutoModelResult(
+        model=best, model_name=winner, feature_names=list(selected),
+        y_train=ytr, y_test=yte, y_pred=y_pred, y_pred_train=y_pred_train,
+        metrics=metrics, importances=imp,
+        best_params={k: v for k, v in best_params.items() if k in _AUTOML_GRIDS[winner]},
+        cv_score=round(cv_score, 4) if not np.isnan(cv_score) else float("nan"),
+        selected_features=list(selected), candidates_df=candidates_df,
+        k_selected=len(selected),
+    )
+
+
+def simulate_prediction(
+    model_result: ModelResult, X: pd.DataFrame, overrides: dict | None = None
+) -> float:
+    """Previsão "e-se": parte da mediana de cada variável usada pelo modelo, aplica
+    os valores informados em ``overrides`` e retorna o alvo previsto."""
+    cols = getattr(model_result, "feature_names", list(X.columns))
+    base = X[cols].median()
+    if overrides:
+        for k, v in overrides.items():
+            if k in base.index and v is not None:
+                base[k] = float(v)
+    arr = base.to_numpy(dtype=float).reshape(1, -1)
+    return float(model_result.model.predict(arr)[0])
+
+
+# --------------------------------------------------------------------------- #
 # A.7  Explicabilidade (SHAP)
 # --------------------------------------------------------------------------- #
 def shap_importance(model_result: ModelResult, X: pd.DataFrame) -> pd.Series | None:
-    """Ranking por |SHAP| médio (impacto médio absoluto). ``None`` se SHAP ausente."""
+    """Ranking por |SHAP| médio (impacto médio absoluto). ``None`` se SHAP ausente.
+
+    Usa apenas as colunas que o modelo realmente viu (``feature_names``), pois o
+    AutoML treina sobre um subconjunto selecionado de variáveis.
+    """
     if not _HAS_SHAP:
         return None
+    cols = getattr(model_result, "feature_names", list(X.columns))
+    Xs = X[cols]
     try:
         explainer = _shap.TreeExplainer(model_result.model)
-        sv = explainer.shap_values(X)
+        sv = explainer.shap_values(Xs)
     except Exception:  # noqa: BLE001
         return None
     if isinstance(sv, list):
         sv = sv[0]
     mean_abs = np.abs(np.asarray(sv)).mean(axis=0)
-    return pd.Series(mean_abs, index=X.columns).sort_values(ascending=False)
+    return pd.Series(mean_abs, index=Xs.columns).sort_values(ascending=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -1471,7 +1662,10 @@ def day_contributions(
             columns=["Variável", "Valor no dia", "Média histórica", "Desvio (σ)", "Contribuição"]
         )
 
-    row = X.loc[[date]]
+    # apenas as variáveis usadas pelo modelo (o AutoML treina num subconjunto)
+    cols = getattr(model_result, "feature_names", list(X.columns))
+    Xs = X[cols]
+    row = Xs.loc[[date]]
     contrib = None
     if _HAS_SHAP:
         try:
@@ -1479,19 +1673,19 @@ def day_contributions(
             sv = explainer.shap_values(row)
             if isinstance(sv, list):
                 sv = sv[0]
-            contrib = pd.Series(np.asarray(sv)[0], index=X.columns)
+            contrib = pd.Series(np.asarray(sv)[0], index=Xs.columns)
         except Exception:  # noqa: BLE001
             contrib = None
 
-    mean = X.mean()
-    std = X.std().replace(0, np.nan)
+    mean = Xs.mean()
+    std = Xs.std().replace(0, np.nan)
     z = ((row.iloc[0] - mean) / std).fillna(0.0)
     if contrib is None:
-        imp = model_result.importances.reindex(X.columns).fillna(0.0)
+        imp = model_result.importances.reindex(Xs.columns).fillna(0.0)
         contrib = z * imp
 
     out = pd.DataFrame({
-        "Variável": list(X.columns),
+        "Variável": list(Xs.columns),
         "Valor no dia": row.iloc[0].to_numpy(dtype=float),
         "Média histórica": mean.to_numpy(dtype=float),
         "Desvio (σ)": z.to_numpy(dtype=float),
