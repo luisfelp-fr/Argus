@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guia Interativo de Data Wrangling — do Zero ao Pandas</title>
+<style>
+  :root{
+    --bg:#FBFAF6;          /* off-white */
+    --card:#FFFFFF;
+    --ink:#3D405B;         /* texto principal */
+    --muted:#7A7F96;
+    --baby:#D6EAF8;        /* azul-bebê claro */
+    --baby-strong:#5B8DB8; /* azul para textos de destaque */
+    --mint:#D5F5E3;        /* verde-menta */
+    --mint-strong:#2E7D5B;
+    --lav:#EDE7F6;         /* lavanda */
+    --peach:#FDEBD9;       /* pêssego (avisos) */
+    --peach-strong:#B9770E;
+    --line:#ECE9E1;
+    --code-bg:#2E3440;     /* bloco de código escuro para contraste */
+    --radius:14px;
+    --shadow:0 2px 10px rgba(61,64,91,.07);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size:16px; line-height:1.65;
+  }
+  code{
+    font-family:Consolas,'Cascadia Code',monospace;
+    background:var(--baby); color:var(--baby-strong);
+    padding:1px 7px; border-radius:6px; font-size:.9em;
+  }
+  /* ===== layout ===== */
+  .wrap{display:flex; max-width:1240px; margin:0 auto;}
+  nav{
+    width:275px; flex-shrink:0; position:sticky; top:0; height:100vh;
+    overflow-y:auto; padding:26px 16px 40px 22px;
+    border-right:1px solid var(--line); background:var(--bg);
+  }
+  main{flex:1; min-width:0; padding:34px 40px 90px;}
+  @media(max-width:900px){ nav{display:none;} main{padding:22px 16px 70px;} }
+
+  nav .logo{font-weight:700; font-size:1.02rem; color:var(--baby-strong); margin-bottom:4px;}
+  nav .sub{font-size:.78rem; color:var(--muted); margin-bottom:18px;}
+  nav ul{list-style:none;}
+  nav li{margin:2px 0;}
+  nav a{
+    display:flex; align-items:center; gap:8px;
+    text-decoration:none; color:var(--muted); font-size:.86rem;
+    padding:6px 10px; border-radius:8px; transition:.15s;
+  }
+  nav a:hover{background:var(--baby); color:var(--ink);}
+  nav a.active{background:var(--baby); color:var(--baby-strong); font-weight:600;}
+  nav input[type=checkbox]{accent-color:var(--mint-strong); cursor:pointer; flex-shrink:0;}
+  .progress-note{font-size:.72rem; color:var(--muted); margin-top:14px;}
+  #pbar{height:6px; background:var(--line); border-radius:3px; margin-top:6px; overflow:hidden;}
+  #pfill{height:100%; width:0; background:linear-gradient(90deg,var(--baby-strong),var(--mint-strong)); transition:.3s;}
+
+  /* ===== hero ===== */
+  .hero{
+    background:linear-gradient(135deg,var(--baby) 0%, var(--lav) 60%, var(--mint) 100%);
+    border-radius:20px; padding:40px 38px; margin-bottom:34px;
+  }
+  .hero h1{font-size:1.9rem; line-height:1.25; margin-bottom:10px;}
+  .hero p{max-width:640px; color:#4a4e6d;}
+  .hero .badges{margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;}
+  .badge{background:rgba(255,255,255,.75); border-radius:20px; padding:4px 14px; font-size:.78rem; font-weight:600; color:var(--baby-strong);}
+
+  /* ===== cards ===== */
+  .card{
+    background:var(--card); border:1px solid var(--line);
+    border-radius:var(--radius); box-shadow:var(--shadow);
+    padding:30px 32px; margin-bottom:30px; scroll-margin-top:20px;
+  }
+  .card-head{display:flex; align-items:center; gap:14px; margin-bottom:6px;}
+  .chip{
+    background:var(--baby); color:var(--baby-strong); font-weight:700;
+    border-radius:10px; padding:4px 12px; font-size:.85rem; flex-shrink:0;
+  }
+  h2{font-size:1.28rem;}
+  h3{font-size:1.02rem; margin:26px 0 8px; color:var(--baby-strong);}
+  .lead{color:var(--muted); margin-bottom:14px; font-size:.95rem;}
+  p{margin-bottom:10px;}
+  ul.plain{margin:0 0 12px 20px;}
+  ul.plain li{margin-bottom:5px;}
+
+  .analogy{
+    background:var(--lav); border-radius:10px; padding:13px 16px;
+    margin:14px 0; font-size:.93rem;
+  }
+  .analogy b{color:#6C5CA8;}
+  .pitfall{
+    background:var(--peach); border-radius:10px; padding:13px 16px;
+    margin:14px 0; font-size:.93rem;
+  }
+  .pitfall b{color:var(--peach-strong);}
+  .tip{
+    background:var(--mint); border-radius:10px; padding:13px 16px;
+    margin:14px 0; font-size:.93rem;
+  }
+  .tip b{color:var(--mint-strong);}
+
+  /* ===== código ===== */
+  .codewrap{position:relative; margin:14px 0;}
+  pre.code{
+    background:var(--code-bg); color:#D8DEE9; border-radius:12px;
+    padding:18px 20px; overflow-x:auto; font-size:.86rem; line-height:1.6;
+    font-family:Consolas,'Cascadia Code',monospace;
+  }
+  pre.code .c{color:#8F9BB3; font-style:italic;}
+  pre.code .s{color:#A3E4C4;}
+  pre.code .k{color:#88B7E8; font-weight:600;}
+  pre.code .n{color:#F0B685;}
+  pre.code .f{color:#C5A8E8;}
+  .copybtn{
+    position:absolute; top:10px; right:10px;
+    background:rgba(255,255,255,.12); color:#D8DEE9; border:none;
+    border-radius:8px; padding:4px 12px; font-size:.74rem; cursor:pointer;
+  }
+  .copybtn:hover{background:rgba(255,255,255,.25);}
+
+  /* ===== reveals (details) ===== */
+  .args{margin:10px 0;}
+  details{
+    border:1px solid var(--line); border-radius:10px;
+    margin-bottom:8px; overflow:hidden; background:#FDFCF9;
+  }
+  details summary{
+    cursor:pointer; padding:11px 16px; font-size:.9rem; font-weight:600;
+    color:var(--baby-strong); list-style:none; display:flex; align-items:center; gap:8px;
+  }
+  details summary::before{content:'▸'; transition:.2s; color:var(--muted);}
+  details[open] summary::before{transform:rotate(90deg);}
+  details summary:hover{background:var(--baby);}
+  details .body{padding:2px 18px 14px; font-size:.9rem; color:#4a4e6d;}
+
+  /* ===== tabelas ===== */
+  table.tbl{
+    border-collapse:collapse; font-size:.82rem; margin:8px 0; width:auto;
+  }
+  table.tbl th{
+    background:var(--baby); color:var(--baby-strong);
+    padding:6px 13px; text-align:left; font-weight:600;
+  }
+  table.tbl td{padding:5px 13px; border-bottom:1px solid var(--line);}
+  table.tbl tr:nth-child(even) td{background:#FAF9F5;}
+  table.tbl .hl{background:var(--mint) !important; font-weight:600;}
+  table.tbl .dim{color:#B9BCC9;}
+  .ba{
+    display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; margin:14px 0;
+  }
+  .ba .col{flex:1; min-width:250px;}
+  .ba .col .cap{font-size:.78rem; font-weight:700; margin-bottom:4px;}
+  .ba .cap.before{color:var(--peach-strong);}
+  .ba .cap.after{color:var(--mint-strong);}
+  .ba .arrow{align-self:center; font-size:1.5rem; color:var(--muted);}
+  .scroll-x{overflow-x:auto;}
+
+  /* ===== tabs ===== */
+  .tabs{margin:14px 0;}
+  .tabbar{display:flex; gap:6px; margin-bottom:-1px;}
+  .tab{
+    border:1px solid var(--line); border-bottom:none; background:#F4F2EC;
+    border-radius:10px 10px 0 0; padding:8px 18px; cursor:pointer;
+    font-size:.85rem; color:var(--muted); font-family:inherit;
+  }
+  .tab.active{background:var(--card); color:var(--baby-strong); font-weight:700;}
+  .tabpane{display:none; border:1px solid var(--line); border-radius:0 12px 12px 12px; padding:16px 18px;}
+  .tabpane.active{display:block;}
+
+  /* ===== quiz ===== */
+  .quiz{
+    background:#FDFCF9; border:1px dashed var(--baby-strong);
+    border-radius:12px; padding:18px 20px; margin:18px 0;
+  }
+  .quiz .q{font-weight:600; margin-bottom:10px;}
+  .quiz .opt{
+    display:block; width:100%; text-align:left; margin-bottom:7px;
+    background:var(--card); border:1px solid var(--line); border-radius:9px;
+    padding:9px 14px; cursor:pointer; font-size:.9rem; font-family:inherit; color:var(--ink);
+  }
+  .quiz .opt:hover{border-color:var(--baby-strong);}
+  .quiz .opt.right{background:var(--mint); border-color:var(--mint-strong); font-weight:600;}
+  .quiz .opt.wrong{background:var(--peach); border-color:var(--peach-strong);}
+  .quiz .feedback{font-size:.85rem; margin-top:6px; min-height:1.2em;}
+
+  .footer-note{color:var(--muted); font-size:.85rem; text-align:center; margin-top:40px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ============ SIDEBAR ============ -->
+<nav>
+  <div class="logo">🧹 Data Wrangling</div>
+  <div class="sub">Guia interativo · MBA Data Science</div>
+  <ul id="menu">
+    <li><a href="#intro"><input type="checkbox" data-sec="intro">Como usar este guia</a></li>
+    <li><a href="#setup"><input type="checkbox" data-sec="setup">1 · Preparando o ambiente</a></li>
+    <li><a href="#espiar"><input type="checkbox" data-sec="espiar">2 · Espiando os dados</a></li>
+    <li><a href="#rename"><input type="checkbox" data-sec="rename">3 · Renomeando colunas</a></li>
+    <li><a href="#selecao"><input type="checkbox" data-sec="selecao">4 · Selecionando dados</a></li>
+    <li><a href="#colunas"><input type="checkbox" data-sec="colunas">5 · Criando colunas</a></li>
+    <li><a href="#condicionais"><input type="checkbox" data-sec="condicionais">6 · Colunas condicionais</a></li>
+    <li><a href="#tipos"><input type="checkbox" data-sec="tipos">7 · Tipos e exclusão</a></li>
+    <li><a href="#concat"><input type="checkbox" data-sec="concat">8 · Adicionando linhas</a></li>
+    <li><a href="#ordenar"><input type="checkbox" data-sec="ordenar">9 · Ordenando</a></li>
+    <li><a href="#resumo"><input type="checkbox" data-sec="resumo">10 · Resumindo os dados</a></li>
+    <li><a href="#groupby"><input type="checkbox" data-sec="groupby">11 · Agrupando (groupby)</a></li>
+    <li><a href="#filtros"><input type="checkbox" data-sec="filtros">12 · Filtrando linhas</a></li>
+    <li><a href="#merge"><input type="checkbox" data-sec="merge">13 · Juntando bases (merge)</a></li>
+    <li><a href="#limpeza"><input type="checkbox" data-sec="limpeza">14 · Duplicatas e NAs</a></li>
+    <li><a href="#melt"><input type="checkbox" data-sec="melt">15 · Mudando o formato</a></li>
+    <li><a href="#chaining"><input type="checkbox" data-sec="chaining">16 · Encadeando funções</a></li>
+    <li><a href="#mapa"><input type="checkbox" data-sec="mapa">🗺️ Mapa final</a></li>
+  </ul>
+  <div class="progress-note">Seu progresso (marque as caixas)</div>
+  <div id="pbar"><div id="pfill"></div></div>
+</nav>
+
+<!-- ============ CONTEÚDO ============ -->
+<main>
+
+<div class="hero">
+  <h1>Data Wrangling do zero,<br>sem sofrimento. 🐼</h1>
+  <p>Todos os métodos da sua aula, reescritos com código limpo, explicados argumento por argumento,
+  com analogias do dia a dia e tabelas de antes &amp; depois. Clique nos itens azuis para revelar
+  as explicações — e use o botão <b>copiar</b> nos códigos para testar tudo no Spyder.</p>
+  <div class="badges">
+    <span class="badge">🎯 Para iniciantes de verdade</span>
+    <span class="badge">🧼 Clean Code</span>
+    <span class="badge">🖱️ Clique para revelar</span>
+    <span class="badge">📋 Copie e rode no Spyder</span>
+  </div>
+</div>
+
+<!-- ==================== INTRO ==================== -->
+<section class="card" id="intro">
+  <div class="card-head"><span class="chip">👋</span><h2>Como usar este guia</h2></div>
+  <p><b>O que é Data Wrangling?</b> É o trabalho de pegar dados "crus" (bagunçados, com nomes ruins,
+  valores faltando, formatos errados) e deixá-los limpos e organizados para análise. Na prática,
+  é onde um cientista de dados passa <b>70–80% do tempo</b> — por isso vale dominar bem esta etapa.</p>
+  <div class="analogy">🧠 <b>Analogia:</b> pense num DataFrame como uma <b>planilha do Excel</b>:
+  cada <b>linha</b> é uma observação (um estudante, um cliente, um jogo) e cada <b>coluna</b> é uma
+  variável (nome, tempo, distância). O pandas é o conjunto de ferramentas para mexer nessa planilha
+  <i>escrevendo código</i> em vez de clicando.</div>
+  <p>Usaremos o mesmo dataset da sua aula: estudantes e o trajeto deles até a escola.
+  Uma amostra (valores ilustrativos):</p>
+  <div class="scroll-x">
+  <table class="tbl">
+    <tr><th>estudante</th><th>tempo</th><th>distancia</th><th>semaforos</th><th>periodo</th><th>perfil</th></tr>
+    <tr><td>Gabriela</td><td>20</td><td>15</td><td>2</td><td>Manhã</td><td>calmo</td></tr>
+    <tr><td>Dalila</td><td>35</td><td>22</td><td>3</td><td>Tarde</td><td>moderado</td></tr>
+    <tr><td>Gustavo</td><td>43</td><td>28</td><td>4</td><td>Manhã</td><td>agressivo</td></tr>
+    <tr><td>Leonor</td><td>18</td><td>10</td><td>1</td><td>Tarde</td><td>calmo</td></tr>
+    <tr><td>Antônio</td><td>52</td><td>31</td><td>5</td><td>Manhã</td><td>agressivo</td></tr>
+  </table>
+  </div>
+  <div class="tip">✅ <b>Sobre os nomes no código:</b> aqui o DataFrame principal se chama <code>df</code>
+  — é a convenção universal do mercado (abreviação de DataFrame). Quando criamos versões novas, usamos nomes
+  que dizem <i>o que aconteceu</i>: <code>df_renomeado</code>, <code>df_filtrado</code>, <code>df_completo</code>.
+  Ler o código deve ser quase como ler uma frase em inglês.</div>
+</section>
+
+<!-- ==================== 1 SETUP ==================== -->
+<section class="card" id="setup">
+  <div class="card-head"><span class="chip">01</span><h2>Preparando o ambiente</h2></div>
+  <p class="lead">Antes de mexer nos dados, precisamos trazer as "caixas de ferramentas" (pacotes) e carregar o arquivo.</p>
+
+  <div class="codewrap"><pre class="code">import pandas as pd    # manipulação de tabelas (DataFrames)
+import numpy as np     # cálculos numéricos e condições
+
+# Carregando a planilha para dentro do Python
+df = pd.read_excel('(1.2) dataset_principal.xls')</pre></div>
+
+  <div class="args">
+    <details><summary><code>import pandas as pd</code> — por que o "as pd"?</summary>
+      <div class="body">É um <b>apelido</b>. Em vez de escrever <code>pandas.read_excel(...)</code> toda vez,
+      escrevemos <code>pd.read_excel(...)</code>. Todo mundo no mundo usa <code>pd</code> para pandas e
+      <code>np</code> para numpy — se você usar outro apelido, seu código vai confundir os outros (e você mesmo).</div>
+    </details>
+    <details><summary><code>pd.read_excel('arquivo.xls')</code> — o que acontece aqui?</summary>
+      <div class="body">O pandas abre o Excel, lê a primeira aba e devolve um <b>DataFrame</b>, que guardamos
+      na variável <code>df</code>. O arquivo precisa estar na <b>mesma pasta</b> do seu script (ou você passa o
+      caminho completo). Para arquivos <code>.csv</code>, o equivalente é <code>pd.read_csv()</code>.</div>
+    </details>
+    <details><summary><code>pd.set_option("display.max.columns", None)</code> — para que serve?</summary>
+      <div class="body">Por padrão, o console esconde colunas quando a tabela é larga (mostra <code>...</code> no meio).
+      Essa linha diz: "mostre <b>todas</b> as colunas, sem limite" (<code>None</code> = sem limite).
+      É só uma configuração de exibição — não muda seus dados em nada.</div>
+    </details>
+  </div>
+
+  <div class="pitfall">⚠️ <b>Erro clássico de iniciante:</b> <code>FileNotFoundError</code>. No Spyder, confira se a
+  "pasta de trabalho" (canto superior direito) é a mesma pasta onde está o arquivo Excel.</div>
+</section>
+
+<!-- ==================== 2 ESPIAR ==================== -->
+<section class="card" id="espiar">
+  <div class="card-head"><span class="chip">02</span><h2>Espiando os dados — <code>head</code>, <code>tail</code>, <code>info</code></h2></div>
+  <p class="lead">Primeira regra do Data Wrangling: <b>nunca mexa no que você ainda não olhou</b>. Estes comandos são o seu "reconhecimento do terreno".</p>
+
+  <div class="codewrap"><pre class="code">df.head(n=5)     # as 5 primeiras linhas
+df.tail(n=3)     # as 3 últimas linhas
+df.columns       # só os nomes das colunas
+df.info()        # raio-x completo: tipos, nulos, memória
+df.shape         # (linhas, colunas) — bônus útil!</pre></div>
+
+  <div class="args">
+    <details><summary><code>head(n=5)</code> — por que só as primeiras linhas?</summary>
+      <div class="body">Um dataset real pode ter milhões de linhas — imprimir tudo travaria o console.
+      <code>head()</code> mostra uma amostra do topo, suficiente para ver se as colunas e valores fazem sentido.
+      O <code>n=</code> controla quantas linhas (o padrão já é 5, então <code>df.head()</code> sozinho funciona igual).</div>
+    </details>
+    <details><summary><code>info()</code> — o comando mais importante desta seção</summary>
+      <div class="body">Mostra, para cada coluna: o <b>nome</b>, quantos valores <b>não-nulos</b> existem
+      (se for menor que o total de linhas, há dados faltando!) e o <b>tipo</b>:<br><br>
+      • <code>object</code> → texto<br>
+      • <code>int64</code> / <code>float64</code> → números (inteiro / decimal)<br>
+      • <code>category</code> → categorias (qualitativa)<br><br>
+      Tipo errado é a causa nº 1 de erro em análise: um número lido como texto não soma, não tira média, nada.</div>
+    </details>
+  </div>
+
+  <div class="analogy">🧠 <b>Analogia:</b> <code>head()</code> é abrir a caixa de mudança e olhar os primeiros itens
+  por cima. <code>info()</code> é a <b>etiqueta da caixa</b>: diz o que tem dentro, quanto tem, e se falta alguma coisa.</div>
+</section>
+
+<!-- ==================== 3 RENAME ==================== -->
+<section class="card" id="rename">
+  <div class="card-head"><span class="chip">03</span><h2>Renomeando colunas — <code>.rename()</code></h2></div>
+  <p class="lead">Colunas com espaços, acentos e parênteses ("Tempo para chegar à escola (minutos)") são um pesadelo para programar. Primeiro passo de qualquer projeto: nomes curtos, minúsculos, sem acento.</p>
+
+  <div class="codewrap"><pre class="code">df = df.rename(columns={
+    'Estudante': 'estudante',
+    'Tempo para chegar à escola (minutos)': 'tempo',
+    'Distância percorrida até a escola (quilômetros)': 'distancia',
+    'Quantidade de semáforos': 'semaforos',
+    'Período do dia': 'periodo',
+    'Perfil ao volante': 'perfil'
+})</pre></div>
+
+  <div class="args">
+    <details><summary><code>columns={'nome antigo': 'nome novo'}</code> — o dicionário de troca</summary>
+      <div class="body">É uma lista de pares <b>"de → para"</b>. A chave (esquerda) é o nome atual;
+      o valor (direita) é o nome novo. Você não precisa renomear todas — só as que quiser.
+      Se errar o nome antigo, o pandas simplesmente <b>ignora em silêncio</b> (não dá erro!), então confira o resultado.</div>
+    </details>
+    <details><summary><code>df = df.rename(...)</code> — por que o "df =" no começo?</summary>
+      <div class="body">O <code>rename</code> <b>não altera</b> o DataFrame original — ele devolve uma <b>cópia</b>
+      renomeada. Se você não guardar essa cópia em algum lugar, ela evapora. O <code>df =</code> diz:
+      "substitua o antigo pela versão nova".</div>
+    </details>
+    <details><summary><code>inplace=True</code> — e essa alternativa que o professor mostrou?</summary>
+      <div class="body"><code>df.rename(..., inplace=True)</code> altera o original <b>direto</b>, sem precisar do <code>df =</code>.
+      <br><br>🧠 <b>Analogia:</b> <code>df = df.rename(...)</code> é fazer uma fotocópia corrigida e jogar fora a antiga.
+      <code>inplace=True</code> é rasurar o documento original com caneta.<br><br>
+      ✅ <b>Prática de mercado:</b> prefira <code>df = df.rename(...)</code>. O <code>inplace</code> está caindo em
+      desuso (o time do pandas desaconselha e planeja removê-lo) e o padrão de reatribuição funciona igual em todos os métodos.</div>
+    </details>
+  </div>
+
+  <div class="ba">
+    <div class="col"><div class="cap before">ANTES 😖</div>
+      <table class="tbl"><tr><th>Estudante</th><th>Tempo para chegar à escola (minutos)</th></tr>
+      <tr><td>Gabriela</td><td>20</td></tr></table></div>
+    <div class="arrow">→</div>
+    <div class="col"><div class="cap after">DEPOIS 😌</div>
+      <table class="tbl"><tr><th>estudante</th><th>tempo</th></tr>
+      <tr><td>Gabriela</td><td>20</td></tr></table></div>
+  </div>
+
+  <div class="quiz">
+    <p class="q">🎯 Quiz: você rodou <code>df.rename(columns={'tempo': 'minutos'})</code> <u>sem</u> o <code>df =</code> e sem <code>inplace=True</code>. O que acontece com <code>df</code>?</p>
+    <button class="opt">A coluna "tempo" vira "minutos"</button>
+    <button class="opt" data-ok>Nada — a cópia renomeada foi criada e descartada</button>
+    <button class="opt">Dá erro de sintaxe</button>
+    <p class="feedback"></p>
+  </div>
+</section>
+
+<!-- ==================== 4 SELEÇÃO ==================== -->
+<section class="card" id="selecao">
+  <div class="card-head"><span class="chip">04</span><h2>Selecionando colunas e linhas</h2></div>
+  <p class="lead">Quase tudo no pandas começa com "pegue este pedaço da tabela". Há duas formas: pelo <b>nome</b> (mais comum) e pela <b>posição</b> (<code>iloc</code>).</p>
+
+  <h3>Pelo nome — o jeito do dia a dia</h3>
+  <div class="codewrap"><pre class="code"># Uma coluna (repare: 1 par de colchetes)
+serie_tempo = df['tempo']
+
+# Várias colunas (repare: 2 pares — é uma LISTA dentro dos colchetes)
+df_resumido = df[['tempo', 'perfil']]</pre></div>
+
+  <div class="args">
+    <details><summary>Por que às vezes <code>[ ]</code> e às vezes <code>[[ ]]</code>?</summary>
+      <div class="body"><code>df['tempo']</code> pede <b>uma</b> coluna e devolve uma <b>Series</b> (uma coluna solta).
+      <code>df[['tempo', 'perfil']]</code> passa uma <b>lista de nomes</b> — o colchete de fora é o "pegue",
+      o de dentro é a lista — e devolve um <b>DataFrame</b> (mini-tabela).
+      <br><br>🧠 <b>Analogia:</b> pedir 1 item da prateleira vs. entregar uma <b>listinha de compras</b> com vários itens.</div>
+    </details>
+    <details><summary><code>df.perfil</code> — o atalho com ponto</summary>
+      <div class="body">Funciona igual a <code>df['perfil']</code>, mas só quando o nome da coluna não tem espaço,
+      acento ou conflito com métodos do pandas. Prefira os colchetes: funcionam sempre.</div>
+    </details>
+  </div>
+
+  <h3>Pela posição — <code>.iloc[linhas, colunas]</code></h3>
+  <div class="codewrap"><pre class="code">df.iloc[3, :]      # linha na posição 3, todas as colunas
+df.iloc[:, 4]      # todas as linhas, coluna na posição 4
+df.iloc[2:5, :]    # linhas 2, 3 e 4  (o 5 fica DE FORA!)
+df.iloc[2:4, 3:5]  # linhas 2-3 e colunas 3-4</pre></div>
+
+  <div class="args">
+    <details><summary>O <code>:</code> sozinho — o que significa?</summary>
+      <div class="body">Significa <b>"tudo"</b>. <code>df.iloc[:, 4]</code> lê-se: "todas as linhas (<code>:</code>),
+      coluna de posição 4". O primeiro espaço é sempre das <b>linhas</b>, o segundo das <b>colunas</b>.</div>
+    </details>
+    <details><summary>Por que <code>2:5</code> pega só 2, 3 e 4? E por que começa do zero?</summary>
+      <div class="body">Duas regras do Python que valem para tudo:<br>
+      1. <b>Contagem começa em 0</b> — a primeira linha é a posição 0.<br>
+      2. Em intervalos <code>a:b</code>, o início <b>entra</b> e o fim <b>fica de fora</b>.<br><br>
+      🧠 <b>Analogia:</b> é como andar de elevador na Europa: o "térreo" é o andar 0. E o intervalo
+      <code>2:5</code> é "do andar 2 até <i>antes</i> do 5".</div>
+    </details>
+    <details><summary><code>loc</code> vs <code>iloc</code> — qual a diferença?</summary>
+      <div class="body"><code>iloc</code> = <b>i</b>nteger location → busca por <b>posição numérica</b> (0, 1, 2...).<br>
+      <code>loc</code> = location → busca por <b>rótulo/nome</b> (nome da coluna, valor do índice) e aceita condições.<br>
+      Exemplo com <code>loc</code>: <code>df.loc[:, df.columns.str.startswith('per')]</code> pega todas as colunas
+      cujo nome <b>começa com</b> "per" (pegaria <code>periodo</code> e <code>perfil</code>). Existe também
+      <code>str.endswith('o')</code> para o final do nome.</div>
+    </details>
+  </div>
+</section>
+
+<!-- ==================== 5 CRIANDO COLUNAS ==================== -->
+<section class="card" id="colunas">
+  <div class="card-head"><span class="chip">05</span><h2>Criando e transformando colunas</h2></div>
+  <p class="lead">O feijão com arroz do wrangling: criar uma coluna nova a partir de outras, ou traduzir os valores de uma coluna.</p>
+
+  <h3>Coluna calculada a partir de outras</h3>
+  <div class="codewrap"><pre class="code"># Semáforos por quilômetro, arredondado para 2 casas decimais
+df['semaforos_por_km'] = round(df['semaforos'] / df['distancia'], 2)</pre></div>
+
+  <div class="args">
+    <details><summary>Como isso funciona linha a linha sem eu escrever um loop?</summary>
+      <div class="body">O pandas é <b>vetorizado</b>: quando você divide duas colunas, ele divide
+      <b>cada linha pela linha correspondente</b>, automaticamente. É como aplicar uma fórmula do Excel
+      na coluna inteira de uma vez, em vez de célula por célula.</div>
+    </details>
+    <details><summary><code>round(valor, 2)</code></summary>
+      <div class="body">Arredonda para <code>2</code> casas decimais. O segundo argumento é o número de casas
+      — <code>round(x, 0)</code> arredondaria para inteiro.</div>
+    </details>
+  </div>
+
+  <h3>Traduzindo valores — <code>.map()</code> com dicionário</h3>
+  <div class="codewrap"><pre class="code"># O dicionário é a "tabela de tradução": de → para
+traducao_perfil = {'calmo': 'perfil_A',
+                   'moderado': 'perfil_B',
+                   'agressivo': 'perfil_C'}
+
+df['perfil_codigo'] = df['perfil'].map(traducao_perfil)</pre></div>
+
+  <div class="args">
+    <details><summary><code>.map(dicionario)</code> — o que ele faz exatamente?</summary>
+      <div class="body">Percorre a coluna e, para cada valor, procura no dicionário e substitui pela tradução.
+      "calmo" → acha a chave "calmo" → devolve "perfil_A".
+      <br><br>⚠️ Se um valor <b>não estiver</b> no dicionário, ele vira <code>NaN</code> (vazio) — não dá erro.
+      Sempre confira depois com <code>df['perfil_codigo'].isna().sum()</code>.</div>
+    </details>
+    <details><summary>E o <code>.assign()</code> que o professor usou?</summary>
+      <div class="body"><code>df_novo = df.assign(perfil_codigo = df['perfil'].map(traducao_perfil))</code>
+      faz a mesma coisa, mas devolve um <b>DataFrame novo</b> em vez de alterar o atual. É muito usado em
+      <b>encadeamentos</b> (seção 16). Regra prática: coluna avulsa → <code>df['nova'] =</code>;
+      dentro de uma corrente de operações → <code>.assign()</code>.</div>
+    </details>
+    <details><summary>⚠️ Texto → número: cuidado com a "ponderação arbitrária"</summary>
+      <div class="body">Mapear {'calmo': 1, 'moderado': 2, 'agressivo': 3} <b>parece</b> inofensivo, mas números
+      têm ordem e distância: o 3 é "3× o 1"? "Agressivo" é 3× "calmo"? Não! Se a variável é categórica,
+      converta para o tipo <code>category</code> (seção 7) para o Python não fazer contas indevidas com ela.</div>
+    </details>
+  </div>
+
+  <div class="ba">
+    <div class="col"><div class="cap before">ANTES</div>
+      <table class="tbl"><tr><th>estudante</th><th>perfil</th></tr>
+      <tr><td>Gabriela</td><td>calmo</td></tr><tr><td>Gustavo</td><td>agressivo</td></tr></table></div>
+    <div class="arrow">→</div>
+    <div class="col"><div class="cap after">DEPOIS (coluna nova criada)</div>
+      <table class="tbl"><tr><th>estudante</th><th>perfil</th><th class="hl">perfil_codigo</th></tr>
+      <tr><td>Gabriela</td><td>calmo</td><td class="hl">perfil_A</td></tr>
+      <tr><td>Gustavo</td><td>agressivo</td><td class="hl">perfil_C</td></tr></table></div>
+  </div>
+</section>
+
+<!-- ==================== 6 CONDICIONAIS ==================== -->
+<section class="card" id="condicionais">
+  <div class="card-head"><span class="chip">06</span><h2>Colunas condicionais — <code>np.select</code> e <code>pd.qcut</code></h2></div>
+  <p class="lead">"Se o tempo for até 20, é rápido; entre 20 e 40, médio; acima de 40, demorado." Categorizar por regras é uma das tarefas mais comuns — e há um jeito limpo de fazer.</p>
+
+  <div class="tabs">
+    <div class="tabbar">
+      <button class="tab active" data-tab="cond-limpo">✅ Jeito limpo (np.select)</button>
+      <button class="tab" data-tab="cond-aula">😵 Como veio da aula (np.where aninhado)</button>
+    </div>
+    <div class="tabpane active" id="cond-limpo">
+      <div class="codewrap"><pre class="code">condicoes = [
+    df['tempo'] &lt;= 20,
+    df['tempo'] &lt;= 40,
+    df['tempo'] &gt; 40
+]
+categorias = ['rápido', 'médio', 'demorado']
+
+df['faixa'] = np.select(condicoes, categorias, default='sem_faixa')</pre></div>
+      <p>Condições e resultados lado a lado, em listas paralelas. Lê-se de cima para baixo, como uma tabela de regras.</p>
+    </div>
+    <div class="tabpane" id="cond-aula">
+      <div class="codewrap"><pre class="code">df['faixa'] = np.where(df['tempo'] &lt;= 20, 'rápido',
+             np.where((df['tempo'] &gt; 20) &amp; (df['tempo'] &lt;= 40), 'médio',
+             np.where(df['tempo'] &gt; 40, 'demorado',
+                      'demais')))</pre></div>
+      <p>Funciona, mas cada condição extra é mais um <code>np.where</code> dentro do anterior — e mais um
+      parêntese para fechar no final. Com 5+ categorias, vira um labirinto.</p>
+    </div>
+  </div>
+
+  <div class="args">
+    <details><summary><code>np.select(condicoes, categorias, default=...)</code> — os 3 argumentos</summary>
+      <div class="body">1º: <b>lista de condições</b>, testadas em ordem, de cima para baixo.<br>
+      2º: <b>lista de resultados</b>, pareada posição a posição com as condições (1ª condição verdadeira → 1º resultado).<br>
+      3º: <code>default</code> = o valor usado se <b>nenhuma</b> condição for verdadeira (a "rede de segurança").
+      <br><br>🧠 <b>Analogia:</b> uma triagem de hospital — o paciente passa pelas perguntas em ordem
+      e recebe a pulseira da <b>primeira</b> pergunta em que se encaixar.</div>
+    </details>
+    <details><summary>Por que a 2ª condição pode ser só <code>&lt;= 40</code>, sem o <code>&gt; 20</code>?</summary>
+      <div class="body">Porque as condições são testadas <b>em ordem</b>: quem tem tempo ≤ 20 já foi capturado
+      pela 1ª condição e não chega na 2ª. Então "≤ 40", na prática, só pega quem está entre 20 e 40.
+      Isso elimina os <code>&amp;</code> e deixa o código mais curto.</div>
+    </details>
+    <details><summary><code>np.where(condicao, se_sim, se_nao)</code> — quando ainda usar?</summary>
+      <div class="body">Quando há só <b>duas</b> saídas, ele é perfeito e mais simples:
+      <code>df['atrasado'] = np.where(df['tempo'] &gt; 40, 'sim', 'não')</code>.
+      Lê-se: "onde a condição for verdadeira, use o 1º valor; senão, o 2º".
+      Regra de bolso: <b>2 saídas → np.where; 3 ou mais → np.select</b>.</div>
+    </details>
+  </div>
+
+  <h3>Categorizar por quartis — <code>pd.qcut()</code></h3>
+  <div class="codewrap"><pre class="code">df['quartil_tempo'] = pd.qcut(df['tempo'], q=4, labels=['1', '2', '3', '4'])</pre></div>
+  <div class="args">
+    <details><summary><code>q=4</code> e <code>labels=</code> — o que significam?</summary>
+      <div class="body"><code>qcut</code> ordena os valores e os divide em <code>q</code> grupos com a
+      <b>mesma quantidade de observações</b> em cada um. Com <code>q=4</code>, são os <b>quartis</b>:
+      os 25% menores tempos viram grupo "1", os 25% seguintes "2", e assim por diante.
+      O <code>labels</code> dá nome aos grupos (sem ele, o pandas mostra os intervalos numéricos).
+      <br><br>🧠 <b>Analogia:</b> uma fila de 100 pessoas por altura, cortada em 4 blocos de 25 —
+      não importa a altura exata, importa <i>em qual bloco</i> você caiu.</div>
+    </details>
+  </div>
+
+  <div class="quiz">
+    <p class="q">🎯 Quiz: no <code>np.select</code>, um estudante com tempo = 20 recebe qual faixa?</p>
+    <button class="opt" data-ok>"rápido" — a 1ª condição (&le; 20) é verdadeira e vence</button>
+    <button class="opt">"médio" — 20 está na faixa do meio</button>
+    <button class="opt">"sem_faixa" — 20 é um empate entre condições</button>
+    <p class="feedback"></p>
+  </div>
+</section>
+
+<!-- ==================== 7 TIPOS E DROP ==================== -->
+<section class="card" id="tipos">
+  <div class="card-head"><span class="chip">07</span><h2>Trocando tipos e excluindo colunas</h2></div>
+  <p class="lead">Duas ferramentas de organização: dizer ao pandas o que cada coluna <i>é</i> (<code>astype</code>) e jogar fora o que não serve (<code>drop</code>).</p>
+
+  <div class="codewrap"><pre class="code"># Converter para categórica (evita contas indevidas com códigos)
+df['perfil_codigo'] = df['perfil_codigo'].astype('category')
+
+# Excluir colunas que não vamos usar
+df = df.drop(columns=['periodo', 'perfil'])</pre></div>
+
+  <div class="args">
+    <details><summary><code>astype('category')</code> — por que se importar com tipos?</summary>
+      <div class="body">Se "perfil" virou os códigos 1, 2, 3 e ficou como número, nada impede alguém de tirar
+      a <b>média do perfil</b> (1.8?!) — um número sem sentido. Declarar <code>category</code> avisa o pandas:
+      "isto é um rótulo, não uma quantidade". Outros valores comuns: <code>astype(int)</code>,
+      <code>astype(float)</code>, <code>astype(str)</code>.</div>
+    </details>
+    <details><summary><code>drop(columns=[...])</code> — e o famoso <code>axis=1</code>?</summary>
+      <div class="body">Você verá muito por aí <code>df.drop(['periodo'], axis=1)</code>. O <code>axis</code> diz a
+      <b>direção</b> da operação:<br><br>
+      • <code>axis=0</code> → opera nas <b>linhas</b> (direção vertical, de cima para baixo)<br>
+      • <code>axis=1</code> → opera nas <b>colunas</b> (direção horizontal)<br><br>
+      🧠 <b>Analogia:</b> num prédio, <code>axis=0</code> é o <b>elevador</b> (percorre andares/linhas) e
+      <code>axis=1</code> é o <b>corredor</b> (percorre salas/colunas).<br><br>
+      ✅ Escrever <code>columns=[...]</code> dispensa decorar o axis — o código diz sozinho o que faz.
+      É a forma recomendada hoje.</div>
+    </details>
+  </div>
+</section>
+
+<!-- ==================== 8 CONCAT ==================== -->
+<section class="card" id="concat">
+  <div class="card-head"><span class="chip">08</span><h2>Adicionando linhas — <code>pd.concat()</code></h2></div>
+  <p class="lead">Chegou um estudante novo depois da coleta? <code>concat</code> empilha DataFrames um embaixo do outro.</p>
+
+  <div class="codewrap"><pre class="code">novo_estudante = pd.DataFrame({'estudante': ['Roberto'],
+                               'tempo': [40],
+                               'periodo': ['Tarde']})
+
+df_completo = pd.concat([df, novo_estudante]).reset_index(drop=True)</pre></div>
+
+  <div class="args">
+    <details><summary><code>pd.concat([df, novo_estudante])</code> — como ele sabe onde encaixar?</summary>
+      <div class="body">Ele alinha <b>pelo nome das colunas</b>, mesmo que estejam em ordem diferente.
+      Colunas que o novo registro não tem (distancia, semaforos...) são preenchidas com <code>NaN</code>
+      (valor faltante) — o pandas não inventa dados. Repare que o argumento é uma <b>lista</b>
+      <code>[df, novo]</code>: você pode empilhar 2, 3, 10 DataFrames de uma vez.</div>
+    </details>
+    <details><summary><code>.reset_index(drop=True)</code> — por que sempre aparece depois?</summary>
+      <div class="body">Cada linha tem um número de identificação (o <b>índice</b>). Ao empilhar, os números vêm
+      junto: seu df termina no índice 9 e o Roberto chega com índice <b>0</b> — ficando dois "0" na tabela!
+      <code>reset_index()</code> renumera tudo do zero (0, 1, 2...).<br><br>
+      E o <code>drop=True</code>? Sem ele, o pandas <b>guarda a numeração antiga como uma coluna nova</b>
+      chamada "index" (tralha). Com <code>drop=True</code>, ele joga a numeração antiga fora.
+      <br><br>🧠 <b>Analogia:</b> renumerar as páginas de dois cadernos colados — o <code>drop=True</code>
+      é apagar os números antigos em vez de deixá-los rabiscados na margem.</div>
+    </details>
+  </div>
+</section>
+
+<!-- ==================== 9 ORDENAR ==================== -->
+<section class="card" id="ordenar">
+  <div class="card-head"><span class="chip">09</span><h2>Ordenando — <code>.sort_values()</code></h2></div>
+  <p class="lead">Colocar as linhas em ordem por uma ou mais colunas — como o "Classificar" do Excel.</p>
+
+  <div class="codewrap"><pre class="code"># Do menor para o maior tempo
+df_por_tempo = df.sort_values(by='tempo', ascending=True).reset_index(drop=True)
+
+# Dois critérios: perfil de Z→A e, dentro de cada perfil, distância de menor→maior
+df_ordenado = df.sort_values(by=['perfil', 'distancia'],
+                             ascending=[False, True]).reset_index(drop=True)</pre></div>
+
+  <div class="args">
+    <details><summary><code>by=</code> — o critério de ordenação</summary>
+      <div class="body">Qual(is) coluna(s) mandam na ordem. Com uma lista <code>by=['perfil', 'distancia']</code>,
+      o pandas ordena pelo 1º critério e usa o 2º como <b>desempate</b> — igual ordenar uma lista telefônica
+      por sobrenome e depois por nome. Funciona com texto também (ordem alfabética).</div>
+    </details>
+    <details><summary><code>ascending=</code> — a direção</summary>
+      <div class="body"><code>True</code> = crescente (A→Z, menor→maior); <code>False</code> = decrescente.
+      Com vários critérios, passe uma lista pareada: <code>ascending=[False, True]</code> significa
+      "perfil decrescente, distância crescente" — cada posição casa com a coluna correspondente do <code>by</code>.</div>
+    </details>
+  </div>
+</section>
+
+<!-- ==================== 10 RESUMO ==================== -->
+<section class="card" id="resumo">
+  <div class="card-head"><span class="chip">10</span><h2>Resumindo os dados — estatísticas descritivas</h2></div>
+  <p class="lead">Depois de limpar, é hora de <b>conhecer</b> os dados: médias, contagens, frequências.</p>
+
+  <div class="codewrap"><pre class="code">df.describe()          # painel geral das colunas numéricas
+
+df['tempo'].mean()     # média
+df['tempo'].median()   # mediana (valor do meio)
+df['tempo'].std()      # desvio padrão (o quanto os valores se espalham)
+df['tempo'].quantile([0.25, 0.75])  # 1º e 3º quartis
+
+df[['tempo', 'distancia', 'semaforos']].corr()  # matriz de correlações</pre></div>
+
+  <div class="args">
+    <details><summary><code>describe()</code> — como ler o painel</summary>
+      <div class="body">Para cada coluna numérica: <code>count</code> (quantos valores), <code>mean</code> (média),
+      <code>std</code> (desvio padrão), <code>min</code>/<code>max</code>, e os percentis 25%/50%/75%.
+      É o "check-up" de 1 linha: valores absurdos (idade = 999?) aparecem na hora no min/max.</div>
+    </details>
+    <details><summary><code>corr()</code> — o que significa o resultado?</summary>
+      <div class="body">Mede o quanto duas variáveis "andam juntas", de -1 a +1. Perto de <b>+1</b>: quando uma sobe,
+      a outra sobe (tempo × distância, provavelmente). Perto de <b>-1</b>: quando uma sobe, a outra desce.
+      Perto de <b>0</b>: sem relação linear. ⚠️ Correlação não é causa!</div>
+    </details>
+  </div>
+
+  <h3>Para variáveis de texto/categóricas</h3>
+  <div class="codewrap"><pre class="code">df['periodo'].value_counts()                 # contagem de cada categoria
+df['perfil'].value_counts(normalize=True)    # em proporção (0.30 = 30%)
+
+df['perfil'].unique()    # quais valores existem (lista)
+df['perfil'].nunique()   # quantos valores diferentes existem (número)
+
+pd.crosstab(df['periodo'], df['perfil'])     # tabela cruzada 2 variáveis</pre></div>
+
+  <div class="args">
+    <details><summary><code>value_counts(normalize=True)</code> — o que o normalize muda?</summary>
+      <div class="body">Sem ele: contagens absolutas ("Manhã: 6, Tarde: 4"). Com <code>normalize=True</code>:
+      proporções ("Manhã: 0.6, Tarde: 0.4" = 60% / 40%). "Normalizar" aqui significa dividir tudo pelo total.</div>
+    </details>
+    <details><summary><code>pd.crosstab(linhas, colunas)</code> — para que serve?</summary>
+      <div class="body">Cruza duas variáveis qualitativas: quantos estudantes são "calmos <b>e</b> da manhã"?
+      O 1º argumento vira as linhas, o 2º as colunas da tabela. Com <code>normalize=True</code>, mostra em
+      proporção do total. É a "tabela dinâmica" mais simples que existe.</div>
+    </details>
+    <details><summary><code>unique()</code> vs <code>nunique()</code></summary>
+      <div class="body"><code>unique()</code> lista os valores distintos (['calmo', 'moderado', 'agressivo']);
+      <code>nunique()</code> só conta quantos são (3). Ótimos para achar erros de digitação:
+      se aparecer 'calmo' e 'Calmo ', são categorias diferentes para o pandas!</div>
+    </details>
+  </div>
+</section>
+
+<!-- ==================== 11 GROUPBY ==================== -->
+<section class="card" id="groupby">
+  <div class="card-head"><span class="chip">11</span><h2>Agrupando — <code>.groupby()</code> + <code>.agg()</code></h2></div>
+  <p class="lead">A dupla mais poderosa do pandas. Perguntas como <i>"qual o tempo médio <b>por período</b>?"</i> são sempre groupby + agg.</p>
+
+  <div class="analogy">🧠 <b>Analogia — separar, calcular, juntar:</b> imagine separar as fichas dos estudantes
+  em <b>pilhas</b> por período (Manhã, Tarde). O <code>groupby</code> faz as pilhas. Depois o <code>agg</code>
+  calcula algo <b>dentro de cada pilha</b> (média, contagem...) e monta uma tabelinha com um resultado por pilha.</div>
+
+  <div class="codewrap"><pre class="code">resumo_por_periodo = df.groupby('periodo').agg(
+    tempo_medio = ('tempo', 'mean'),
+    distancia_media = ('distancia', 'mean'),
+    qtd_estudantes = ('estudante', 'count')
+)</pre></div>
+
+  <div class="args">
+    <details><summary><code>groupby('periodo')</code> — o que ele devolve?</summary>
+      <div class="body">Sozinho, ele devolve um objeto "agrupado" que ainda não mostra nada útil — são só as
+      pilhas montadas, esperando você dizer o que calcular. Por isso ele quase sempre vem seguido de
+      <code>.agg()</code>, <code>.mean()</code>, <code>.size()</code> ou <code>.describe()</code>.
+      Pode agrupar por mais de um critério: <code>df.groupby(['periodo', 'perfil'])</code> cria uma pilha
+      para cada <b>combinação</b> (Manhã+calmo, Manhã+agressivo, Tarde+calmo...).</div>
+    </details>
+    <details><summary><code>agg(nome_novo = ('coluna', 'função'))</code> — a sintaxe nomeada</summary>
+      <div class="body">Cada linha diz: "crie a coluna <b>nome_novo</b>, aplicando a <b>função</b> na <b>coluna</b>".
+      <code>tempo_medio = ('tempo', 'mean')</code> = "coluna tempo_medio, média da coluna tempo".
+      Funções comuns: <code>'mean'</code>, <code>'median'</code>, <code>'sum'</code>, <code>'count'</code>,
+      <code>'min'</code>, <code>'max'</code>, <code>'std'</code>.
+      <br><br>O professor usou o formato de dicionário <code>agg({'tempo': 'mean'})</code> — também funciona,
+      mas o formato nomeado deixa você <b>batizar</b> as colunas do resultado, o que fica muito mais legível.</div>
+    </details>
+    <details><summary><code>.size()</code> e <code>.describe().T</code></summary>
+      <div class="body"><code>df.groupby('periodo').size()</code> conta quantas linhas há em cada grupo.
+      <code>describe().T</code> gera o painel completo por grupo; o <code>.T</code> <b>transpõe</b>
+      (gira a tabela 90°, linhas viram colunas) — só para caber melhor no console.</div>
+    </details>
+  </div>
+
+  <div class="ba">
+    <div class="col"><div class="cap before">ANTES (1 linha por estudante)</div>
+      <table class="tbl"><tr><th>estudante</th><th>periodo</th><th>tempo</th></tr>
+      <tr><td>Gabriela</td><td>Manhã</td><td>20</td></tr>
+      <tr><td>Gustavo</td><td>Manhã</td><td>43</td></tr>
+      <tr><td>Dalila</td><td>Tarde</td><td>35</td></tr>
+      <tr><td>Leonor</td><td>Tarde</td><td>18</td></tr></table></div>
+    <div class="arrow">→</div>
+    <div class="col"><div class="cap after">DEPOIS (1 linha por grupo)</div>
+      <table class="tbl"><tr><th>periodo</th><th>tempo_medio</th><th>qtd_estudantes</th></tr>
+      <tr><td>Manhã</td><td>31.5</td><td>2</td></tr>
+      <tr><td>Tarde</td><td>26.5</td><td>2</td></tr></table></div>
+  </div>
+</section>
+
+<!-- ==================== 12 FILTROS ==================== -->
+<section class="card" id="filtros">
+  <div class="card-head"><span class="chip">12</span><h2>Filtrando linhas</h2></div>
+  <p class="lead">"Quero só os estudantes calmos da tarde." Há dois estilos — os dois aparecem em provas, tutoriais e no trabalho, então vale conhecer ambos.</p>
+
+  <div class="tabs">
+    <div class="tabbar">
+      <button class="tab active" data-tab="f-query">✅ Estilo query() — lê como frase</button>
+      <button class="tab" data-tab="f-mask">🔧 Estilo colchetes — o clássico</button>
+    </div>
+    <div class="tabpane active" id="f-query">
+      <div class="codewrap"><pre class="code">df.query('perfil == "calmo"')
+df.query('perfil == "calmo" &amp; periodo == "Tarde"')   # E (interseção)
+df.query('perfil == "calmo" | periodo == "Tarde"')   # OU (união)
+df.query('perfil != "calmo"')                        # diferente
+df.query('tempo &gt;= 25')
+df.query('tempo.between(25, 40)')</pre></div>
+      <p>A condição vai <b>entre aspas</b>, como uma frase. Dentro dela, textos usam o <b>outro</b> tipo de aspas
+      (por isso <code>'perfil == "calmo"'</code>).</p>
+    </div>
+    <div class="tabpane" id="f-mask">
+      <div class="codewrap"><pre class="code">df[df['perfil'] == 'calmo']
+df[(df['perfil'] == 'calmo') &amp; (df['periodo'] == 'Tarde')]
+df[(df['perfil'] == 'calmo') | (df['periodo'] == 'Tarde')]
+df[df['perfil'] != 'calmo']
+df[df['tempo'] &gt;= 25]
+df[df['tempo'].between(25, 40, inclusive='both')]</pre></div>
+      <p>Lê-se de dentro para fora: <code>df['perfil'] == 'calmo'</code> gera uma coluna de <code>True</code>/<code>False</code>
+      (a "máscara"), e o <code>df[...]</code> de fora guarda só as linhas <code>True</code>.
+      ⚠️ Com <code>&amp;</code> e <code>|</code>, cada condição <b>precisa</b> dos seus parênteses.</p>
+    </div>
+  </div>
+
+  <div class="args">
+    <details><summary><code>&amp;</code>, <code>|</code> e <code>~</code> — os três operadores lógicos</summary>
+      <div class="body"><code>&amp;</code> = <b>E</b> (as duas condições verdadeiras) · <code>|</code> = <b>OU</b>
+      (pelo menos uma verdadeira) · <code>~</code> = <b>NÃO</b> (inverte tudo:
+      <code>df[~(df['tempo'] &gt;= 25)]</code> pega quem tem tempo <b>menor</b> que 25).
+      <br><br>🧠 <b>Analogia (filtro de festa):</b> <code>&amp;</code> = "convidado <b>e</b> com traje social";
+      <code>|</code> = "convidado <b>ou</b> acompanhante"; <code>~</code> = "todo mundo <b>exceto</b> a lista negra".</div>
+    </details>
+    <details><summary><code>.between(25, 40, inclusive='both')</code></summary>
+      <div class="body">Atalho para "entre 25 e 40". O <code>inclusive</code> decide se as pontas entram:
+      <code>'both'</code> (25 e 40 entram — padrão), <code>'neither'</code> (nenhuma entra),
+      <code>'left'</code> (só o 25), <code>'right'</code> (só o 40).</div>
+    </details>
+    <details><summary><code>.isin(lista)</code> — comparar com vários valores de uma vez</summary>
+      <div class="body">Em vez de <code>(x == 'Ana') | (x == 'Júlia') | ...</code>, faça:<br>
+      <code>nomes = ['Gabriela', 'Ana', 'Júlia']</code><br>
+      <code>df[df['estudante'].isin(nomes)]</code><br><br>
+      "isin" = <i>is in</i> = "está em". Devolve True para quem está na lista. Combine com <code>~</code>
+      para "quem NÃO está na lista".</div>
+    </details>
+    <details><summary>O <code>@</code> dentro do query — <code>df.query('estudante.isin(@nomes)')</code></summary>
+      <div class="body">Dentro das aspas do query, o pandas só enxerga nomes de <b>colunas</b>. O <code>@</code>
+      é o crachá que diz: "isto não é coluna, é uma <b>variável do meu script</b> — busque lá fora".</div>
+    </details>
+  </div>
+
+  <div class="quiz">
+    <p class="q">🎯 Quiz: qual filtro pega os estudantes que NÃO são "moderado"?</p>
+    <button class="opt">df[df['perfil'] == '~moderado']</button>
+    <button class="opt" data-ok>df[df['perfil'] != 'moderado'] &nbsp;(ou&nbsp; df[~(df['perfil'] == 'moderado')])</button>
+    <button class="opt">df.query(perfil não é moderado)</button>
+    <p class="feedback"></p>
+  </div>
+</section>
+
+<!-- ==================== 13 MERGE ==================== -->
+<section class="card" id="merge">
+  <div class="card-head"><span class="chip">13</span><h2>Juntando bases — <code>pd.merge()</code></h2></div>
+  <p class="lead">Os dados raramente vêm numa tabela só: notas num arquivo, cadastro em outro. O <code>merge</code> cruza duas tabelas usando uma coluna-chave em comum.</p>
+
+  <div class="analogy">🧠 <b>Analogia:</b> é o <b>PROCV do Excel</b>, só que profissional. A coluna
+  "estudante" é a chave: para cada nome da tabela A, o merge busca o mesmo nome na tabela B e cola as
+  colunas dela ao lado.</div>
+
+  <div class="codewrap"><pre class="code"># As duas tabelas precisam da chave com o MESMO nome
+df_notas = df_notas.rename(columns={'Estudante': 'estudante'})
+
+df_completo = pd.merge(df, df_notas, how='left', on='estudante')</pre></div>
+
+  <div class="args">
+    <details><summary><code>on='estudante'</code> — a chave</summary>
+      <div class="body">A coluna que existe <b>nas duas</b> tabelas e identifica cada observação.
+      É por ela que o pandas casa as linhas. Se os nomes forem diferentes ("Estudante" vs "estudante"),
+      renomeie antes — para o pandas, maiúscula é outra coluna.</div>
+    </details>
+    <details><summary><code>how=</code> — a decisão mais importante: quem sobrevive?</summary>
+      <div class="body">Suponha: <code>df</code> tem <b>Antônio</b> (mas não Marcos) e <code>df_notas</code>
+      tem <b>Marcos</b> (mas não Antônio).<br><br>
+      • <code>how='left'</code> → ficam os estudantes da tabela da <b>esquerda</b> (df). Antônio fica (com nota = NaN); Marcos sai.<br>
+      • <code>how='right'</code> → ficam os da <b>direita</b>. Marcos fica; Antônio sai.<br>
+      • <code>how='inner'</code> → só quem está <b>nas duas</b>. Antônio e Marcos saem.<br>
+      • <code>how='outer'</code> → <b>todo mundo</b> fica; o que faltar vira NaN.<br><br>
+      🧠 <b>Analogia (duas listas de convidados):</b> inner = interseção (só quem está nas duas);
+      outer = união (todo mundo); left/right = "manda quem fez a lista".</div>
+    </details>
+    <details><summary>Como descobrir quem está numa base e não na outra?</summary>
+      <div class="body"><code>df[~df['estudante'].isin(df_notas['estudante'])]</code> — "estudantes de df
+      que NÃO estão em df_notas". Inverta as bases para a pergunta contrária. Ótima checagem para rodar
+      <b>antes</b> do merge e não ser surpreendido por NaNs.</div>
+    </details>
+  </div>
+
+  <div class="scroll-x">
+  <table class="tbl">
+    <tr><th>how=</th><th>Quem fica na base final</th><th>Frase para lembrar</th></tr>
+    <tr><td><code>left</code></td><td>Todos da esquerda</td><td>"A tabela da esquerda manda"</td></tr>
+    <tr><td><code>right</code></td><td>Todos da direita</td><td>"A tabela da direita manda"</td></tr>
+    <tr><td><code>inner</code></td><td>Só quem está nas duas</td><td>"Interseção"</td></tr>
+    <tr><td><code>outer</code></td><td>Todos de ambas</td><td>"União — ninguém fica de fora"</td></tr>
+  </table>
+  </div>
+
+  <div class="pitfall">⚠️ <b>Antes de qualquer merge</b>, verifique duplicatas na chave (seção 14). Se "Gabriela"
+  aparecer 2× numa base e 3× na outra, o merge gera 6 linhas de Gabriela — e seus totais explodem sem você perceber.</div>
+
+  <div class="quiz">
+    <p class="q">🎯 Quiz: você quer manter TODOS os estudantes do seu cadastro (df, à esquerda), mesmo os sem nota. Qual how?</p>
+    <button class="opt">how='inner'</button>
+    <button class="opt" data-ok>how='left'</button>
+    <button class="opt">how='right'</button>
+    <p class="feedback"></p>
+  </div>
+</section>
+
+<!-- ==================== 14 LIMPEZA ==================== -->
+<section class="card" id="limpeza">
+  <div class="card-head"><span class="chip">14</span><h2>Duplicatas e valores faltantes (NA)</h2></div>
+  <p class="lead">A faxina propriamente dita: linhas repetidas e buracos na tabela.</p>
+
+  <h3>Duplicatas — <code>drop_duplicates()</code></h3>
+  <div class="codewrap"><pre class="code"># Quantas linhas duplicadas existem?
+len(df) - len(df.drop_duplicates())      # 0 = nenhuma 🎉
+
+# Remover duplicatas (linha inteira igual)
+df_sem_duplicatas = df.drop_duplicates()
+
+# Considerar duplicata quando SÓ estas colunas se repetem
+df_sem_duplicatas = df.drop_duplicates(subset=['estudante', 'perfil'])</pre></div>
+
+  <div class="args">
+    <details><summary><code>subset=</code> — o que muda?</summary>
+      <div class="body">Sem <code>subset</code>, só é duplicata a linha <b>100% idêntica</b> em todas as colunas.
+      Com <code>subset=['estudante', 'perfil']</code>, basta esse par se repetir para a linha ser considerada
+      duplicada (o pandas mantém a primeira ocorrência e descarta as demais).</div>
+    </details>
+  </div>
+
+  <h3>Valores faltantes — <code>isna</code>, <code>fillna</code>, <code>dropna</code></h3>
+  <div class="codewrap"><pre class="code"># Diagnóstico: quantos NAs em cada coluna?
+df.isna().sum()
+
+# Opção A: preencher os buracos
+df_preenchido = df.fillna('sem_informacao')                      # texto fixo
+df['tempo'] = df['tempo'].fillna(df['tempo'].mean())             # com a média ⚠️
+
+# Opção B: excluir linhas com qualquer NA
+df_sem_na = df.dropna().reset_index(drop=True)</pre></div>
+
+  <div class="args">
+    <details><summary><code>isna().sum()</code> — por que essa dupla?</summary>
+      <div class="body"><code>isna()</code> transforma a tabela em True/False (True = faltante).
+      Como o Python conta <code>True</code> como 1, o <code>.sum()</code> soma por coluna e devolve o
+      <b>placar de buracos</b>: <code>tempo: 1, nota: 3...</code> É sempre o primeiro comando da faxina.</div>
+    </details>
+    <details><summary><code>fillna(valor)</code> — preencher com o quê?</summary>
+      <div class="body">Substitui cada NaN pelo valor informado. Preencher número com a <b>média</b> é possível,
+      mas ⚠️ <b>use com muito critério</b> (como o professor avisou): você está <i>inventando dados</i>, o que
+      distorce a variância e pode enviesar a análise. A decisão certa depende do <i>porquê</i> de o dado faltar.</div>
+    </details>
+    <details><summary><code>dropna()</code> — quando excluir é ok?</summary>
+      <div class="body">Remove qualquer linha com pelo menos um NaN. Seguro quando os faltantes são poucos e
+      aleatórios; perigoso quando são muitos (você joga fora informação) ou concentrados num grupo
+      (você enviesa a amostra). Por isso o diagnóstico com <code>isna().sum()</code> vem primeiro.</div>
+    </details>
+  </div>
+</section>
+
+<!-- ==================== 15 MELT ==================== -->
+<section class="card" id="melt">
+  <div class="card-head"><span class="chip">15</span><h2>Mudando o formato — <code>pd.melt()</code></h2></div>
+  <p class="lead">Às vezes a tabela está "larga" (uma coluna para cada medida) e você precisa dela "longa" (uma linha para cada medida) — principalmente para gráficos.</p>
+
+  <div class="codewrap"><pre class="code">df_longo = pd.melt(df,
+                   id_vars='estudante',
+                   value_vars=['tempo', 'distancia'])</pre></div>
+
+  <div class="args">
+    <details><summary><code>id_vars=</code> — quem fica parado</summary>
+      <div class="body">A(s) coluna(s) de <b>identificação</b>, que se repetem em cada linha nova para você
+      saber de quem é o valor. Aqui, o nome do estudante.</div>
+    </details>
+    <details><summary><code>value_vars=</code> — quem "derrete"</summary>
+      <div class="body">As colunas que serão empilhadas. Cada uma vira linhas, e o pandas cria duas colunas
+      novas: <code>variable</code> (de qual coluna o valor veio) e <code>value</code> (o valor em si).
+      <br><br>🧠 <b>Analogia:</b> <i>melt</i> = derreter. As colunas "derretem" e escorrem para baixo, empilhadas.</div>
+    </details>
+  </div>
+
+  <div class="ba">
+    <div class="col"><div class="cap before">ANTES — formato largo</div>
+      <table class="tbl"><tr><th>estudante</th><th>tempo</th><th>distancia</th></tr>
+      <tr><td>Gabriela</td><td>20</td><td>15</td></tr>
+      <tr><td>Gustavo</td><td>43</td><td>28</td></tr></table></div>
+    <div class="arrow">→</div>
+    <div class="col"><div class="cap after">DEPOIS — formato longo</div>
+      <table class="tbl"><tr><th>estudante</th><th>variable</th><th>value</th></tr>
+      <tr><td>Gabriela</td><td>tempo</td><td>20</td></tr>
+      <tr><td>Gustavo</td><td>tempo</td><td>43</td></tr>
+      <tr><td>Gabriela</td><td>distancia</td><td>15</td></tr>
+      <tr><td>Gustavo</td><td>distancia</td><td>28</td></tr></table></div>
+  </div>
+
+  <div class="tip">✅ <b>Por que isso importa:</b> o seaborn (gráficos) adora o formato longo —
+  <code>sns.barplot(data=df_longo, y='estudante', x='value', hue='variable')</code> desenha as duas medidas
+  lado a lado por estudante, automaticamente.</div>
+</section>
+
+<!-- ==================== 16 CHAINING ==================== -->
+<section class="card" id="chaining">
+  <div class="card-head"><span class="chip">16</span><h2>Encadeando funções — a linha de produção</h2></div>
+  <p class="lead">O gran finale: como os métodos do pandas devolvem sempre um DataFrame novo, dá para emendar um no outro e ler o código como uma receita, passo a passo.</p>
+
+  <div class="codewrap"><pre class="code">resumo = (
+    df
+    .assign(semaforos_por_km = round(df['semaforos'] / df['distancia'], 2))
+    .query('tempo &gt;= 30')
+    .groupby('periodo')
+    .agg(media_sem_por_km = ('semaforos_por_km', 'mean'),
+         distancia_media = ('distancia', 'mean'),
+         qtd = ('estudante', 'count'))
+)</pre></div>
+
+  <p>Leitura em voz alta: <i>"pegue o df → crie a coluna semaforos_por_km → fique só com tempo ≥ 30 →
+  agrupe por período → calcule as médias e a contagem"</i>. Cada linha é uma estação da linha de produção.</p>
+
+  <div class="args">
+    <details><summary>Por que os parênteses envolvendo tudo?</summary>
+      <div class="body">O Python normalmente exige que um comando caiba em uma linha. O parêntese externo
+      diz: "isso tudo é UM comando, pode quebrar em várias linhas". Sem ele, cada quebra de linha daria erro
+      de sintaxe. É o truque que permite o formato "receita".</div>
+    </details>
+    <details><summary>Quando encadear e quando separar em etapas?</summary>
+      <div class="body">Encadeie quando os passos formam <b>uma transformação única</b> com nome claro (como
+      "resumo"). Separe em variáveis intermediárias quando você precisar <b>inspecionar</b> o meio do caminho
+      ou reutilizar uma etapa. Em dúvida (e aprendendo), separe — depurar passo a passo no Spyder,
+      olhando o Explorador de Variáveis, ensina muito.</div>
+    </details>
+  </div>
+</section>
+
+<!-- ==================== MAPA FINAL ==================== -->
+<section class="card" id="mapa">
+  <div class="card-head"><span class="chip">🗺️</span><h2>Mapa final — cola de 30 segundos</h2></div>
+  <p class="lead">A pergunta que você tem ↔ o método que responde. Salve mentalmente esta tabela.</p>
+  <div class="scroll-x">
+  <table class="tbl">
+    <tr><th>Quero…</th><th>Uso…</th></tr>
+    <tr><td>Espiar os dados</td><td><code>head()</code> · <code>info()</code> · <code>shape</code></td></tr>
+    <tr><td>Renomear colunas</td><td><code>rename(columns={...})</code></td></tr>
+    <tr><td>Pegar colunas / posições</td><td><code>df[['a','b']]</code> · <code>iloc</code> · <code>loc</code></td></tr>
+    <tr><td>Criar coluna calculada</td><td><code>df['nova'] = ...</code> · <code>assign()</code></td></tr>
+    <tr><td>Traduzir valores</td><td><code>map({de: para})</code></td></tr>
+    <tr><td>Categorizar por regras</td><td><code>np.where</code> (2 saídas) · <code>np.select</code> (3+)</td></tr>
+    <tr><td>Categorizar por quartis</td><td><code>pd.qcut(q=4)</code></td></tr>
+    <tr><td>Corrigir tipo</td><td><code>astype()</code></td></tr>
+    <tr><td>Excluir colunas</td><td><code>drop(columns=[...])</code></td></tr>
+    <tr><td>Empilhar linhas</td><td><code>pd.concat([...])</code> + <code>reset_index(drop=True)</code></td></tr>
+    <tr><td>Ordenar</td><td><code>sort_values(by=, ascending=)</code></td></tr>
+    <tr><td>Resumir números</td><td><code>describe()</code> · <code>mean()</code> · <code>corr()</code></td></tr>
+    <tr><td>Contar categorias</td><td><code>value_counts()</code> · <code>crosstab()</code></td></tr>
+    <tr><td>Resumir por grupo</td><td><code>groupby()</code> + <code>agg()</code></td></tr>
+    <tr><td>Filtrar linhas</td><td><code>query()</code> · máscaras <code>&amp; | ~</code> · <code>isin</code> · <code>between</code></td></tr>
+    <tr><td>Cruzar tabelas</td><td><code>merge(how=, on=)</code></td></tr>
+    <tr><td>Tirar duplicatas</td><td><code>drop_duplicates(subset=)</code></td></tr>
+    <tr><td>Tratar faltantes</td><td><code>isna().sum()</code> → <code>fillna()</code> ou <code>dropna()</code></td></tr>
+    <tr><td>Largo → longo</td><td><code>melt(id_vars=, value_vars=)</code></td></tr>
+  </table>
+  </div>
+
+  <h3>Sua rota de estudo sugerida</h3>
+  <ul class="plain">
+    <li><b>1ª passada:</b> leia as seções em ordem, clicando em todos os "revelar". Marque as caixas na lateral.</li>
+    <li><b>2ª passada:</b> abra o Spyder com o dataset da aula, copie cada bloco de código (botão 📋) e rode.
+    Veja o resultado no Explorador de Variáveis.</li>
+    <li><b>3ª passada:</b> feche o guia e tente refazer de memória: renomear → filtrar → criar coluna condicional →
+    agrupar. Errar aqui é o exercício funcionando.</li>
+    <li><b>Consolidação:</b> aplique tudo num dataset novo (Kaggle ou dados abertos). É aí que gruda de verdade.</li>
+  </ul>
+  <p class="lead">Fonte de referência oficial: <a href="https://pandas.pydata.org/docs/user_guide/index.html" target="_blank">pandas User Guide</a> — quando tiver dúvida sobre um argumento, é lá que está a resposta definitiva.</p>
+</section>
+
+<p class="footer-note">Feito para o seu MBA em Data Science · conteúdo baseado no script da disciplina de Data Wrangling · bons estudos! 🐼</p>
+
+</main>
+</div>
+
+<script>
+/* ===== 1. Syntax highlight simples ===== */
+(function(){
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const rx = /(#.*$)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|\b(import|as|from|True|False|None|and|or|not|in|if|else|elif|for|while|def|return|lambda)\b|\b(\d+(?:\.\d+)?)\b|([A-Za-z_]\w*)(?=\()/gm;
+  document.querySelectorAll('pre.code').forEach(pre=>{
+    const raw = pre.textContent;
+    pre.dataset.raw = raw;
+    pre.innerHTML = esc(raw).replace(rx, (m,c,s,k,n,f)=>{
+      if(c) return '<span class="c">'+c+'</span>';
+      if(s) return '<span class="s">'+s+'</span>';
+      if(k) return '<span class="k">'+k+'</span>';
+      if(n) return '<span class="n">'+n+'</span>';
+      if(f) return '<span class="f">'+f+'</span>';
+      return m;
+    });
+    /* botão copiar */
+    const wrap = pre.parentElement;
+    if(wrap && wrap.classList.contains('codewrap')){
+      const btn = document.createElement('button');
+      btn.className = 'copybtn'; btn.textContent = '📋 copiar';
+      btn.addEventListener('click', ()=>{
+        navigator.clipboard.writeText(raw).then(()=>{
+          btn.textContent = '✅ copiado!';
+          setTimeout(()=>btn.textContent='📋 copiar', 1600);
+        });
+      });
+      wrap.appendChild(btn);
+    }
+  });
+})();
+
+/* ===== 2. Tabs ===== */
+document.querySelectorAll('.tabs').forEach(tabs=>{
+  tabs.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      tabs.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      tabs.querySelectorAll('.tabpane').forEach(p=>p.classList.remove('active'));
+      tab.classList.add('active');
+      tabs.querySelector('#'+tab.dataset.tab).classList.add('active');
+    });
+  });
+});
+
+/* ===== 3. Quiz ===== */
+document.querySelectorAll('.quiz').forEach(quiz=>{
+  const fb = quiz.querySelector('.feedback');
+  quiz.querySelectorAll('.opt').forEach(opt=>{
+    opt.addEventListener('click', ()=>{
+      quiz.querySelectorAll('.opt').forEach(o=>o.classList.remove('right','wrong'));
+      if(opt.hasAttribute('data-ok')){
+        opt.classList.add('right');
+        fb.textContent = '✅ Exato! Você entendeu o conceito.';
+        fb.style.color = 'var(--mint-strong)';
+      } else {
+        opt.classList.add('wrong');
+        quiz.querySelector('[data-ok]').classList.add('right');
+        fb.textContent = '❌ Quase — a resposta certa está destacada em verde. Releia o card acima.';
+        fb.style.color = 'var(--peach-strong)';
+      }
+    });
+  });
+});
+
+/* ===== 4. Progresso (checkboxes + localStorage) ===== */
+(function(){
+  const KEY = 'dw-guia-progresso';
+  const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+  const boxes = document.querySelectorAll('#menu input[type=checkbox]');
+  const fill = document.getElementById('pfill');
+  function update(){
+    const done = [...boxes].filter(b=>b.checked).length;
+    fill.style.width = (done / boxes.length * 100) + '%';
+  }
+  boxes.forEach(box=>{
+    box.checked = !!saved[box.dataset.sec];
+    box.addEventListener('click', e=>{
+      e.stopPropagation();
+      saved[box.dataset.sec] = box.checked;
+      localStorage.setItem(KEY, JSON.stringify(saved));
+      update();
+    });
+  });
+  update();
+})();
+
+/* ===== 5. Scroll-spy (destaca seção atual no menu) ===== */
+(function(){
+  const links = document.querySelectorAll('#menu a');
+  const map = {};
+  links.forEach(a=>{ map[a.getAttribute('href').slice(1)] = a; });
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(en=>{
+      if(en.isIntersecting){
+        links.forEach(a=>a.classList.remove('active'));
+        const link = map[en.target.id];
+        if(link) link.classList.add('active');
+      }
+    });
+  }, {rootMargin:'-15% 0px -70% 0px'});
+  document.querySelectorAll('section.card').forEach(sec=>obs.observe(sec));
+})();
+</script>
+</body>
+</html>

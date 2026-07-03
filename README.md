@@ -108,3 +108,18 @@ Espera-se que `Vazao` e `Pressao` liderem o ranking com lags ótimos próximos d
 - `analysis.py` — núcleo de cálculo (leitura, reamostragem, lag, correlação, MI). Sem dependência de UI.
 - `app.py` — interface Streamlit.
 - `sample_data.py` — gerador de dados sintéticos para validação.
+
+## Guia Interativo de Data Wrangling
+
+App Streamlit independente que apresenta um guia interativo de Data Wrangling
+com pandas (menu com barra de progresso, abas, quizzes, botões de copiar código
+e realce de sintaxe). O conteúdo interativo vive em `guia_data_wrangling.html`
+e é renderizado por `guia_data_wrangling.py`.
+
+```bash
+streamlit run guia_data_wrangling.py
+```
+
+No Streamlit Community Cloud, aponte o "Main file path" do deploy para
+`guia_data_wrangling.py`. A única dependência é `streamlit` (já em
+`requirements.txt`).
